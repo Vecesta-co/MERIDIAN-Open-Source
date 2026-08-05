@@ -1,0 +1,24 @@
+{
+  "name": "Curl Test Mission",
+  "description": "Mission created via live curl verification",
+  "goal": "Verify all Phase 1 endpoints work live",
+  "steps": [
+    {
+      "key": "research",
+      "name": "Research",
+      "step_type": "llm",
+      "agent_key": "agent_1",
+      "prompt_template": "Research the topic: {{topic}}",
+      "max_retries": 2,
+      "timeout_seconds": 120
+    },
+    {
+      "key": "summarize",
+      "name": "Summarize",
+      "step_type": "llm",
+      "agent_key": "agent_1",
+      "prompt_template": "Summarize: {{research.output}}",
+      "order_index": 1
+    }
+  ]
+}

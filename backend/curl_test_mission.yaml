@@ -1,0 +1,21 @@
+version: "1.0"
+mission:
+  name: "Curl YAML Test Mission"
+  goal: "Verify YAML mission creation via live curl"
+  version: 1
+  status: draft
+
+agents:
+  - key: "agent_1"
+    name: "Agent One"
+    model: "gpt-4o"
+    system_prompt: "You are a test agent."
+
+steps:
+  - key: "research"
+    name: "Research"
+    step_type: "llm"
+    agent_key: "agent_1"
+    prompt_template: "Research the topic: {{topic}}"
+    max_retries: 2
+    timeout_seconds: 120

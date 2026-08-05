@@ -1,0 +1,327 @@
+The research confirms the gap clearly. The market has **observability tools** (Langfuse, Laminar), **frameworks** (LangChain, CrewAI), and **workflow tools** (N8N), but nothing that acts as a **unified agent operating system** — combining mission design, execution, testing, sandboxed tool dispatch, human gates, and versioned workflow management in a single self-hosted, non-code-first platform. The landscape remains fragmented, with no unified standard for how telemetry, execution, and workflow control should coexist. Many frameworks prioritize developer experience over runtime monitoring. Issue discovery from production is still manual — eval tools tell you pass rates but don't tell you which production failure patterns should be in your eval dataset. Multi-step reasoning, tool use, planning, and autonomous decision-making introduce complexity that makes traditional logging woefully inadequate.
+
+Now, here is the full product design:
+
+---
+
+# 🧠 MERIDIAN — The Open-Source AI Agent Operations Platform
+
+---
+
+## A. PRODUCT NAME
+
+# **MERIDIAN**
+**Tagline:** *"Design, run, watch, and trust your AI agents — without writing a framework."*
+
+---
+
+## B. PRODUCT THESIS
+
+Meridian is a self-hosted, open-source AI agent operations platform that gives non-engineer AI utilizers and backend teams a single environment to **define agent missions as structured workflows, execute them against sandboxed tools, observe every decision in real time, run automated and human evals, enforce approval gates, and iterate with confidence**. Unlike LangChain (a code library), N8N (a generic automation tool), or Langfuse (a pure observability layer), Meridian is the **missing operational command layer** — the place where you go from "I have an idea for an agent" to "I have a reliable, observable, tested, governable agent in production" — without needing to architect a custom framework from scratch each time.
+
+---
+
+## C. WHY NOW
+
+| Signal | Evidence |
+|--------|----------|
+| **Agents are going to production, not just demos** | As AI agents evolve from experimental prototypes to mission-critical production systems, 89% of organizations have implemented observability for their agents, with quality issues emerging as the primary production barrier at 32%. |
+| **Frameworks are fragmenting, not converging** | There is no single best framework — the right choice depends on language, ecosystem, and control requirements, with LangGraph, Pydantic AI, Mastra, and provider SDKs each targeting different niches. |
+| **Observability exists but is disconnected from workflow design** | MLflow covers observability, evaluation, prompt optimization, and governance in one place with no enterprise paywalls, but it remains a developer-first tool disconnected from the workflow design layer. |
+| **Human approval gates are still primitive** | Human gate steps that pause execution, present options, and route based on the response are defined as part of the workflow graph — but this capability exists only in nascent tools with no polished open-source standard. |
+| **The eval-to-fix loop is broken** | Clustering to categorize failure modes is early and lacks quality measurement, and tools won't automatically solve when production failures keep surprising your eval suite. |
+| **AI utilizers (non-coders) have no native tool** | Every serious agent platform today requires Python fluency. The fastest-growing user class — professional AI operators — has no purpose-built environment. |
+
+---
+
+## D. CORE MODULES
+
+| # | Module | Function | Analogy |
+|---|--------|----------|---------|
+| 1 | **Mission Designer** | Define agent goals, sub-agents, tool assignments, and workflow DAG in YAML + UI | Figma for agent workflows |
+| 2 | **Agent Runtime** | Execute missions step-by-step, manage agent state, handle retries and branching | A production job runner |
+| 3 | **Tool Sandbox** | Isolate and execute tools (browser, RAG, API calls, scripts) in a controlled environment | Docker for tool calls |
+| 4 | **Trace Engine** | Capture every LLM call, tool invocation, decision, and token cost as structured spans | OpenTelemetry for agents |
+| 5 | **Eval Suite** | Run automated quality checks (LLM-as-judge, rule-based, regression) on every execution | CI pipeline for agents |
+| 6 | **Approval Gate** | Pause execution at defined checkpoints; route to human for decision before continuing | PR review for agent actions |
+| 7 | **State Store** | Persist mission context, memory, and intermediate outputs across multi-step agent runs | Redis + DB for agents |
+| 8 | **Config & Secrets Vault** | Manage LLM API keys, tool credentials, and environment variables securely | Vault / .env manager |
+| 9 | **Mission Dashboard** | Real-time visual execution graph, agent logs, cost tracking, and approval inbox | Mission Control UI |
+| 10 | **Integration Bus** | Connect external tools: N8N webhooks, Supabase, Firecrawl, BrowseUse, custom APIs | Plugin adapter layer |
+
+---
+
+## E. SYSTEM ARCHITECTURE OVERVIEW
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│                        MERIDIAN PLATFORM                              │
+│                                                                       │
+│  ┌─────────────────────┐     ┌───────────────────────────────────┐   │
+│  │   MISSION DESIGNER  │────▶│           AGENT RUNTIME           │   │
+│  │  (YAML + UI Editor) │     │  (Orchestrator + State Machine)   │   │
+│  └─────────────────────┘     └────────┬──────────────┬───────────┘   │
+│                                       │              │               │
+│                          ┌────────────▼───┐  ┌───────▼────────────┐ │
+│                          │  TOOL SANDBOX  │  │   APPROVAL GATE    │ │
+│                          │ (Isolated Exec)│  │ (Human-in-the-Loop)│ │
+│                          └────────────┬───┘  └───────┬────────────┘ │
+│                                       │              │               │
+│                          ┌────────────▼──────────────▼────────────┐ │
+│                          │           TRACE ENGINE                  │ │
+│                          │   (Spans, Logs, LLM Calls, Costs)      │ │
+│                          └────────────────────┬────────────────────┘ │
+│                                               │                      │
+│              ┌────────────────────────────────▼──────────────────┐  │
+│              │                    STATE STORE                     │  │
+│              │      (Postgres via Supabase + Redis Cache)         │  │
+│              └────────────────────────────────┬──────────────────┘  │
+│                                               │                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────▼──────────────────┐  │
+│  │  EVAL SUITE │  │ CONFIG VAULT │  │    MISSION DASHBOARD       │  │
+│  │(Auto + Human│  │(Keys/Secrets)│  │ (DAG View, Logs, Inbox)    │  │
+│  └─────────────┘  └──────────────┘  └───────────────────────────┘  │
+│                                                                       │
+│  ──────────────────── INTEGRATION BUS ──────────────────────────────  │
+│        N8N │ Firecrawl │ BrowseUse │ Supabase │ Custom API           │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### Technology Stack (MVP-Oriented)
+
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Backend API | **FastAPI (Python)** | Fast, async, easy for KimiK2.6 to generate |
+| Database | **Supabase (Postgres)** | Already known, real-time, row-level security |
+| Task Queue | **Redis + RQ or Celery** | Lightweight, async job execution |
+| Trace Storage | **Postgres JSONB tables** | No extra infra for MVP; can migrate to ClickHouse |
+| Frontend | **Next.js (minimal)** | Simple dashboard; React-based |
+| Tool Sandbox | **Subprocess + Docker Compose** | Isolated tool execution per run |
+| Auth | **Supabase Auth** | Already known to user |
+| Config/Secrets | **Supabase Vault or .env + encryption** | Simple and auditable |
+| LLM Integration | **LiteLLM** | Vendor-neutral, supports all major models |
+
+---
+
+## F. PHASE-BY-PHASE ROADMAP
+
+---
+
+### 🔷 PHASE 0 — Foundation & Data Contracts
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Establish the entire data schema, folder structure, environment config, and API skeleton. Everything else builds on this. |
+| **Inputs** | Product spec (this document), Supabase credentials, list of entities |
+| **Outputs** | Database schema (DDL), folder tree, FastAPI skeleton with empty routes, `.env.example`, README scaffold |
+| **Implementation Scope** | Create Supabase tables for: `missions`, `agents`, `steps`, `runs`, `traces`, `approvals`, `evals`, `tools`, `secrets`. Define status enums. Set up FastAPI project with versioned router (`/api/v1/`). No logic yet. |
+| **Acceptance Criteria** | All tables created with correct types and foreign keys. FastAPI boots with 200 on `/health`. All routes return 501 Not Implemented. Folder structure matches the module plan. |
+| **Risks** | Schema changes in later phases create migration debt. Over-normalize or under-normalize. |
+
+---
+
+---
+
+### 🔷 PHASE 1 — Mission Designer (Core Workflow Definition)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Build the ability to create, store, version, and retrieve a "mission" — a structured definition of agent goal, sub-agents, steps, tools assigned, and execution order. |
+| **Inputs** | Phase 0 schema, YAML workflow format spec |
+| **Outputs** | CRUD API for missions and steps. YAML parser/validator. Mission versioning (v1, v2). Mission clone endpoint. |
+| **Implementation Scope** | `POST /missions` (create), `GET /missions/{id}`, `PUT /missions/{id}`, `DELETE /missions/{id}`, `POST /missions/{id}/clone`. YAML ↔ JSON bidirectional converter. Version field increments on update. Step ordering enforced. |
+| **Acceptance Criteria** | A mission can be created via JSON or YAML. Version increments on every save. Steps maintain execution order. Clone produces independent copy with v1. Validation rejects malformed missions. |
+| **Risks** | YAML parsing complexity; circular step dependencies; no DAG validation logic yet. |
+
+---
+
+---
+
+### 🔷 PHASE 2 — Agent Runtime (Execution Engine)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Build the core engine that takes a published mission and executes it step by step, managing state, retries, and failure handling. |
+| **Inputs** | Published mission from Phase 1, LiteLLM config, Redis for job queue |
+| **Outputs** | `POST /runs` (start a mission run). Background worker executes steps sequentially. Run status updates in DB. Basic LLM call per step. Step outputs stored. |
+| **Implementation Scope** | Run creation, status machine (`pending → running → completed/failed`). Background job via RQ or Celery. One LLM call per step using step's prompt template + prior step outputs as context. Retry logic (max 3, exponential backoff). Store step output in `traces` table as raw JSON. |
+| **Acceptance Criteria** | A 3-step mission runs end-to-end. Each step gets prior output as context. Failed steps trigger retry. Run status is queryable. All outputs stored. |
+| **Risks** | LLM context window overflow from accumulating outputs; infinite retry loops; no timeout enforcement yet. |
+
+---
+
+---
+
+### 🔷 PHASE 3 — Tool Sandbox (Isolated Tool Execution)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Allow each mission step to call external tools (web search, RAG query, browser action, API call) in a controlled, isolated execution environment. |
+| **Inputs** | Tool registry from Phase 0, Docker Compose environment, tool credentials from Config Vault |
+| **Outputs** | Tool Registry API. Tool dispatch method callable from the Runtime. Each tool runs in a subprocess/container. Results returned as structured JSON. Tool execution logged as a trace span. |
+| **Implementation Scope** | Define 4 built-in tools for MVP: (1) HTTP API call, (2) Firecrawl web scrape, (3) Supabase DB query, (4) RAG query (basic vector search). Each tool defined as a class with `execute(input) → output`. Tool dispatcher in Runtime calls the right tool by name. Timeout per tool enforced. |
+| **Acceptance Criteria** | All 4 tools callable from a mission step. Results returned as structured JSON within 30 seconds. Failures return structured error. Each tool call creates a child span in the trace. Credentials never logged. |
+| **Risks** | Tool timeout blocking the runtime worker; credential leakage in logs; RAG tool needs a vector store (add Supabase pgvector for MVP). |
+
+---
+
+---
+
+### 🔷 PHASE 4 — Trace Engine (Full Observability)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Transform raw trace records into a structured, queryable, and visualizable execution graph. Every run should be fully reconstructible from its traces. |
+| **Inputs** | All trace records from Phases 2 & 3, run data |
+| **Outputs** | `GET /runs/{id}/trace` returns full execution tree. Structured span model with parent/child relationships. Cost calculation per run. Error aggregation. Trace export (JSON). |
+| **Implementation Scope** | Build a span tree reconstructor from flat trace records. Add `parent_span_id` linkage. Calculate: total tokens used, estimated cost (by model), total duration, step-level success rate. API returns tree as nested JSON. Add `GET /runs/{id}/summary` for lightweight cost/status overview. |
+| **Acceptance Criteria** | A completed 3-step run with 2 tool calls produces a correct 5-node span tree. Cost is calculated correctly. Summary endpoint responds in under 200ms. Full trace export works. |
+| **Risks** | Deeply nested span trees become slow to query; missing parent_span_id from Phase 2/3 requires backfill migration. |
+
+---
+
+---
+
+### 🔷 PHASE 5 — Eval Suite (Automated Quality Gates)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Allow users to define quality checks that run automatically after each mission step or full run, and flag failures for review. |
+| **Inputs** | Trace outputs from Phase 4, eval definitions |
+| **Outputs** | Eval definition API. 3 eval types: (1) Rule-based (output contains/does not contain string), (2) LLM-as-judge (send output to LLM with scoring prompt), (3) Schema validation (output matches JSON schema). Eval results stored with score and pass/fail. |
+| **Implementation Scope** | `POST /evals` to define an eval. Eval linked to a step or full run. After each run completes, eval runner executes all linked evals. Results stored with: eval_id, run_id, step_id, score (0–1), verdict, evidence. `GET /runs/{id}/evals` returns all results. |
+| **Acceptance Criteria** | All 3 eval types execute correctly. LLM-as-judge uses configurable scoring prompt. Eval failure does not block the run (it flags it). Eval scores visible per run. Regression detected when score drops below threshold. |
+| **Risks** | LLM-as-judge adds latency and cost to every run; eval definitions becoming too complex for non-coders. |
+
+---
+
+---
+
+### 🔷 PHASE 6 — Approval Gate (Human-in-the-Loop)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Allow specific steps in a mission to pause execution and wait for a human to approve, reject, or modify the output before continuing. |
+| **Inputs** | Mission definition (approval_required: true on a step), Trace output, Runtime pause hook |
+| **Outputs** | Approval record created when step completes with approval_required. Runtime pauses the run. API for human to view pending approvals, review context, and submit decision. Runtime resumes or cancels based on decision. |
+| **Implementation Scope** | `GET /approvals` (list pending), `GET /approvals/{id}` (detail with step output + trace), `POST /approvals/{id}/decide` (approve/reject/modify). Run status → `awaiting_approval`. On approve: continue next step. On reject: mark run failed. On modify: inject human-edited output and continue. Approval timeout (configurable, default 24h) → auto-fail. |
+| **Acceptance Criteria** | A run with approval_required step pauses correctly. Human submits a decision via API. Run resumes from next step. Timeout triggers auto-fail. Modified output is used as the step's final output. |
+| **Risks** | Approval timeout logic needs a background scheduler; modified output might break downstream step expectations. |
+
+---
+
+---
+
+### 🔷 PHASE 7 — Mission Dashboard (Minimal Web UI)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Build a minimal but functional web interface that makes Meridian usable by a non-coder: design missions, start runs, watch executions, review approvals, and view eval results. |
+| **Inputs** | All Phase 0–6 APIs, Next.js project scaffold |
+| **Outputs** | 6 pages: (1) Mission List, (2) Mission Editor (YAML + form), (3) Run Launcher, (4) Run Detail (live trace tree), (5) Approval Inbox, (6) Eval Results |
+| **Implementation Scope** | Next.js app with REST calls to FastAPI. No real-time WebSocket required for MVP (polling every 5s). Trace displayed as collapsible step tree. Approval inbox shows pending items with approve/reject buttons. Eval results show score bar. No authentication required in MVP (localhost only). |
+| **Acceptance Criteria** | All 6 pages load without errors. A user can create a mission, start a run, watch it execute (with refresh), review an approval, and see eval scores — without touching the terminal or an API client. |
+| **Risks** | UI scope creep; polling is inefficient at scale (acceptable for MVP); no auth in MVP is a deliberate constraint. |
+
+---
+
+---
+
+### 🔷 PHASE 8 — Integration Bus (External Connectors)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Allow Meridian missions to connect to external platforms the user already uses: N8N (trigger missions via webhook), Firecrawl (as a built-in tool), BrowseUse (browser automation tool), and Supabase (data read/write tool). |
+| **Inputs** | Phase 3 Tool Sandbox, external API credentials from Config Vault |
+| **Outputs** | 4 integration adapters: N8N webhook trigger, Firecrawl scrape tool, BrowseUse browser action tool, Supabase row CRUD tool. Each available in the tool registry. `POST /webhooks/n8n` endpoint for N8N to trigger a mission run. |
+| **Implementation Scope** | Implement each as a Tool class following the Phase 3 interface. Register all 4 in the tool registry. Document each adapter's input/output schema. N8N webhook endpoint authenticates via shared secret and starts a run. |
+| **Acceptance Criteria** | All 4 tools callable from a mission step. N8N can start a Meridian run via webhook. Each tool returns structured output within 60 seconds. Credentials are vault-sourced. |
+| **Risks** | BrowseUse API may require headless browser infra; Firecrawl rate limits; N8N webhook authentication must be robust. |
+
+---
+
+---
+
+### 🔷 PHASE 9 — MVP Hardening & Release Preparation
+
+| Attribute | Detail |
+|-----------|--------|
+| **Objective** | Make the MVP reliable, secure, and launchable. Fix all known critical issues, add basic auth, write the README, and create a one-command Docker Compose setup. |
+| **Inputs** | All Phase 0–8 outputs, critical fix lists from all audits |
+| **Outputs** | `docker-compose.yml` (all services: FastAPI, Next.js, Redis, Supabase/Postgres). Basic API key auth on all routes. Rate limiting. `README.md` with setup steps. `CONTRIBUTING.md`. Seed script with a demo mission. |
+| **Implementation Scope** | Resolve all CRITICAL FIXES from Phases 0–8. Add API key header auth to FastAPI. Add rate limiting (slowapi). Docker Compose with health checks. Seed demo mission (3 steps, 2 tools, 1 approval gate, 1 eval). Final README walkthrough. |
+| **Acceptance Criteria** | Platform runs on a fresh machine with `docker compose up`. Demo mission runs end-to-end. API key auth blocks unauthorized requests. README is clear enough for a non-coder to follow. |
+| **Risks** | Undiscovered integration conflicts between services; Docker environment differences from dev. |
+
+---
+
+---
+
+## G. PHASE SUMMARY TABLE
+
+| Phase | Name | Primary Output | Est. KimiK2.6 Sessions | MVP Critical? |
+|-------|------|---------------|------------------------|---------------|
+| 0 | Foundation | DB schema + API skeleton | 1–2 | ✅ Yes |
+| 1 | Mission Designer | CRUD + YAML workflow API | 2–3 | ✅ Yes |
+| 2 | Agent Runtime | Execution engine + worker | 3–4 | ✅ Yes |
+| 3 | Tool Sandbox | 4 built-in tools + dispatcher | 2–3 | ✅ Yes |
+| 4 | Trace Engine | Span tree + cost + export | 2 | ✅ Yes |
+| 5 | Eval Suite | 3 eval types + results API | 2–3 | ✅ Yes |
+| 6 | Approval Gate | Human-in-loop pause/resume | 2–3 | ✅ Yes |
+| 7 | Mission Dashboard | 6-page Next.js UI | 3–4 | ✅ Yes |
+| 8 | Integration Bus | 4 adapters + N8N webhook | 2–3 | ✅ Yes |
+| 9 | Hardening | Docker, auth, README, seed | 2 | ✅ Yes |
+
+**Total estimated KimiK2.6 sessions: 21–31 focused sessions**
+
+---
+
+## H. FINAL RECOMMENDATION ON MVP SCOPE
+
+### What to include in MVP v1.0:
+
+✅ All 10 modules in functional (not perfect) form
+✅ 4 built-in tools: HTTP API, Firecrawl, Supabase, RAG
+✅ 3 eval types: rule-based, LLM-as-judge, schema validation
+✅ Approval gates with timeout
+✅ Full trace tree with cost calculation
+✅ 6-page dashboard (polling, no WebSocket)
+✅ N8N webhook trigger integration
+✅ One-command Docker Compose setup
+✅ Demo seed mission
+✅ API key authentication
+
+### What to defer to v1.1+:
+
+⏳ WebSocket real-time trace streaming
+⏳ Visual drag-and-drop DAG editor (replace YAML editor)
+⏳ Parallel step execution
+⏳ User accounts and multi-tenancy
+⏳ RBAC (role-based access control)
+⏳ Native Slack/email notifications for approvals
+⏳ Custom tool plugin SDK
+⏳ CI/CD pipeline integration (GitHub Actions gate)
+⏳ LLM cost budget enforcement and alerts
+
+---
+
+## I. ANTI-GOALS (What Meridian Must Never Become)
+
+> These constraints exist to prevent scope creep, complexity inflation, and framework bloat.
+
+| # | Anti-Goal | Why It's Dangerous |
+|---|-----------|-------------------|
+| 1 | **Do not become another LangChain** | Meridian is an operational platform, not a code library. It runs on top of frameworks, not instead of them. |
+| 2 | **Do not require users to write Python** | The entire value proposition for AI utilizers collapses if mission creation requires coding. YAML + UI is the limit. |
+| 3 | **Do not build your own LLM integration layer** | LiteLLM exists. Use it. Any attempt to natively support 20+ models directly is wasted effort. |
+| 4 | **Do not build a visual node editor in Phase 1** | This is a Phase 3+ feature. Starting with it will consume the entire build budget on UI. |
+| 5 | **Do not add real-time WebSocket in MVP** | 5-second polling is sufficient for MVP. WebSocket introduces infra complexity before the product is validated. |
+| 6 | **Do not build multi-tenancy in v1.0** | Single-user, single-namespace operation is the MVP target. Multi-tenancy is a v2 feature. |
+| 7 | **Do not attempt to replace N8N** | Meridian integrates with N8N. It does not replicate it. Generic workflow automation is not the mission. |
+| 8 | **Do not turn the Eval Suite into a benchmark platform** | Evals are quality gates, not research tools. Keep them simple: rule, LLM-judge, schema. |
+| 9 | **Do not obsess over the UI** | Meridian's moat is its backend operational logic. A functional UI is enough for v1.0. Beauty comes later. |
+| 10 | **Do not ship without the demo seed mission** | A platform that requires users to understand all 10 modules before they can run anything will never be adopted. The demo mission is the gateway drug. |
+
+---
+
+> **Strategic Note for the Builder:** Meridian's category-defining moment is not any single feature — it is the **unified operational loop**: Design → Execute → Observe → Evaluate → Gate → Iterate. No existing open-source tool closes this loop in a single self-hosted platform. The first person to do this cleanly, with a great README and a working demo, wins the category. Each phase above is designed so that KimiK2.6 can complete it in isolation, audit it before moving on, and never hold the full codebase in context at once. Follow the phases in order. Do not skip the audit prompts.

@@ -1,0 +1,39 @@
+ # MERIDIAN Backend Dependencies
+# Phase 0: Foundation & Data Contracts
+# Python 3.11+
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Configuration
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Database
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+aiosqlite==0.20.0
+
+# CORS middleware (included with FastAPI)
+# No additional install needed
+
+# Development & testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2
+
+# YAML parsing (Phase 1 Mission Designer)
+PyYAML==6.0.2
+
+# Code quality
+ruff==0.6.8
+mypy==1.11.2
+
+# Task queue (Phase 2 Agent Runtime)
+redis[hiredis]==5.1.1
+rq==1.16.2
+
+# LLM integration (Phase 2 Agent Runtime)
+litellm==1.48.0
