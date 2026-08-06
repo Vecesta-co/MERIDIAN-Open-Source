@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # Run/Worker timeouts (Phase 2)
     RUN_TIMEOUT_MARGIN_SECONDS: int = 60  # margin added to sum of step timeouts
     STALE_RUN_THRESHOLD_MINUTES: int = 30  # watchdog: running runs older than this are marked failed
+    WATCHDOG_INTERVAL_SECONDS: int = 60  # period between watchdog reap_stale_runs sweeps
+    MAX_CONTEXT_CHARS: int = 20000  # cap per prior step output rendered into LLM prompts
 
     # Security
     SECRET_KEY: str = "change-me-in-production"

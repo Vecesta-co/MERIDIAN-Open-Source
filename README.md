@@ -198,11 +198,23 @@ meridian/
 | POST | `/api/v1/missions/validate` | ✅ 200/400 | Validate payload without saving |
 | DELETE | `/api/v1/missions/{id}` | 🔧 501 | Delete mission (Phase 5+) |
 
-### Phase 0 — Not Yet Implemented (501)
+### Phase 2 — Agent Runtime (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| POST | `/api/v1/runs` | ✅ 201 | Create a run from a published mission |
+| GET | `/api/v1/runs` | ✅ 200 | List runs (newest first) |
+| GET | `/api/v1/runs/{id}` | ✅ 200 | Get run detail with steps and spans |
+| GET | `/api/v1/runs/{id}/steps` | ✅ 200 | Get run's steps ordered by order_index |
+| POST | `/api/v1/runs/{id}/cancel` | ✅ 200 | Cancel a run (sets cancel_requested) |
+| GET | `/api/v1/runs/{id}/trace` | 🔧 501 | Trace Engine — Phase 4 |
+| GET | `/api/v1/runs/{id}/summary` | 🔧 501 | Summary — Phase 4 |
+| GET | `/api/v1/runs/{id}/evals` | 🔧 501 | Eval Suite — Phase 5 |
+
+### Phase 3+ — Not Yet Implemented (501)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/api/v1/runs` | Run execution — Phase 2 |
 | GET/POST | `/api/v1/tools` | Tool registry — Phase 3 |
 | GET | `/api/v1/traces` | Trace engine — Phase 4 |
 | GET/POST | `/api/v1/evals` | Eval suite — Phase 5 |
@@ -339,7 +351,7 @@ mypy .
 |-------|------|--------|
 | 0 | Foundation & Data Contracts | ✅ Complete |
 | 1 | Mission Designer | ✅ Complete |
-| 2 | Agent Runtime | 🔜 Planned |
+| 2 | Agent Runtime | ✅ Complete |
 | 3 | Tool Sandbox | 🔜 Planned |
 | 4 | Trace Engine | 🔜 Planned |
 | 5 | Eval Suite | 🔜 Planned |

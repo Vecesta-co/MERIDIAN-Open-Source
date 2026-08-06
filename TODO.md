@@ -1,61 +1,27 @@
-# MERIDIAN Phase 1 — Implementation Progress
+# MERIDIAN Phase 2 — Agent Runtime Verification Plan
 
-## ✅ Completed: Audit Fix Implementation
+## ✅ Step 1: Unit Test Verification
+- [x] Re-run pytest after worker.py datetime fix → **138 passed, 4 warnings** (confirmed worker fix safe)
 
-### Critical Fix 1: YAML Schema Enforcement
-- [x] `backend/app/services/yaml_service.py` — Added `validate_step_dependencies`, `validate_tool_step_refs`, `validate_agent_references`
-- [x] Wired into `validate_yaml_workflow` before agent section validation
+## ✅ Step 2: Live End-to-End Testing
+- [x] Check environment (Redis NOT available, no LLM API key, SQLite dev DB)
+- [x] **Found + fixed a real bug**: stale SQLite dev DB missing Phase 2 columns (`runs.mission_id`, `runs.current_step_id`) → created `backend/migrate_sqlite_phase2.py` and ran it
+- [x] Start FastAPI server (uvicorn) → healthy against real dev DB
+- [x] Create + publish a mission
+- [x] POST /runs → 201, pending run created
+- [x] Verify run executes steps (real engine, mock LLM) → completed
+- [x] Cancel path → cancelled, cancel completed → 400
+- [x] Timeout path → terminal state
+- [x] Stale reaping (watchdog) → reaped 1
+- [x] GET run detail / steps verification
+- **Live verification: 42 passed, 0 failed**
 
-### Critical Fix 2: Version Immutability
-- [x] Service-layer guard confirmed (published missions return 403 on update)
-- [x] DB UniqueConstraint `(mission_id, version_int)` exists in migration + ORM
+## 🔲 Remaining Coverage Gaps (needs infra)
+- [ ] RQ worker + Redis end-to-end (Redis not installed/running)
+- [ ] Real LLM call via LiteLLM (no API key configured)
+- [ ] These are infra-dependent, not code bugs
 
-### Critical Fix 3: Clone Independence
-- [x] Verified — clone produces independent draft v1 with independent steps (no action needed)
-
-### Critical Fix 4: order_index DB Constraint
-- [x] `backend/app/db/models.py` — Added `UniqueConstraint("mission_version_id", "order_index", name="uq_steps_mission_version_order")` + `Index("idx_steps_mission_version_order", ...)` to `Step.__table_args__`
-- [x] Synced with `backend/migrations/005_phase1_mission_designer.sql`
-
-### Critical Fix 5: depends_on Validation
-- [x] `backend/app/services/mission_service.py` — Added `_validate_step_dependencies` (type/existence/cycle via DFS)
-- [x] `backend/app/services/yaml_service.py` — Added `validate_step_dependencies` (same rules)
-- [x] Wired into JSON create, JSON update, and YAML validate paths
-
-## ✅ Completed: Tests Added (111 total, all passing)
-- [x] Create-path validation parity tests (missing goal, llm w/o agent_key, malformed tool_refs, tool step w/o tool_refs)
-- [x] depends_on validation tests (unknown key, self-ref, circular, non-list, valid DAG)
-- [x] agent_key cross-reference tests (JSON + YAML paths)
-- [x] YAML path validation parity tests
-- [x] order_index duplicate rejection test
-- [x] `backend/tests/test_phase1_missions.py` — 26 original + 19 new tests = 45 tests
-
-## ✅ Completed: Edge-Case Verification (13 New Tests)
-
-### Update-Path Validation Parity
-- [x] PUT with replacement steps lacking `goal` → 400 (full-replacement contract)
-- [x] PUT with llm step lacking `agent_key` → 400
-- [x] PUT with tool step lacking `tool_refs` → 400
-- [x] PUT with circular `depends_on` → 400
-- [x] PUT with `depends_on` unknown key → 400
-- [x] PUT with undefined agent reference → 400
-
-### PUT with Duplicate order_index
-- [x] Duplicate `order_index` in replacement steps → rejected (clean 400 with "order"/"index")
-- [x] Unique `order_index` → 200, version increments to 2
-
-### YAML-Created Mission Flows
-- [x] GET YAML-created mission → correct steps (research first)
-- [x] Update YAML-created mission → 200, version 2
-- [x] Clone YAML-created mission → independent draft v1, "(Copy)" name
-- [x] YAML export roundtrip → contains "YAML Mission", "research", "summarize"
-
-### Full-Replacement Update Contract
-- [x] PUT payload validated as-is (no silent merge of existing mission fields)
-
-## ✅ Verification
-- [x] Full pytest suite: **123 passed, 0 failed** (2.04s)
-- [x] Live API verification: **50 passed, 0 failed**
-- [x] Files modified: `mission_service.py` (full-replacement validation, `_validate_unique_order_indices`), `yaml_service.py` (duplicate order_index ValidationError), `test_phase1_missions.py` (13 new tests + payload fixes)
-
-## ✅ Phase 1: COMPLETE
+## 📋 Final Report
+- [x] Phase 2 Agent Runtime works end-to-end against real DB
+- [x] Found + fixed dev DB migration gap
+- [x] Documented coverage gaps

@@ -12,7 +12,7 @@ Handles business logic for mission CRUD operations:
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select, func
@@ -432,7 +432,7 @@ async def update_mission(
         # No steps change — still increment version per spec
         mission.version += 1
 
-    mission.updated_at = datetime.utcnow()
+    mission.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(mission)
 
@@ -455,7 +455,7 @@ async def publish_mission(session: AsyncSession, mission_id: uuid.UUID) -> Missi
     """Publish a mission. Sets state to 'published' (idempotent)."""
     mission = await get_mission_or_404(session, mission_id)
     mission.state = "published"
-    mission.updated_at = datetime.utcnow()
+    mission.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(mission)
     logger.info("Published mission '%s'", mission.name)

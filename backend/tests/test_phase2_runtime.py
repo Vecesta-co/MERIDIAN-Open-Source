@@ -12,7 +12,7 @@ Tests the run lifecycle:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -368,7 +368,7 @@ async def test_reap_stale_runs(async_client: AsyncClient):
     async with TestSessionFactory() as db:
         db_run = await db.get(Run, uuid.UUID(run["id"]))
         db_run.status = "running"
-        db_run.started_at = datetime.utcnow() - timedelta(minutes=60)
+        db_run.started_at = datetime.now(timezone.utc) - timedelta(minutes=60)
         await db.commit()
 
     async with TestSessionFactory() as db:

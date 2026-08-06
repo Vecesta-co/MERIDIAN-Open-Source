@@ -20,7 +20,7 @@ NOT IMPLEMENTED in Phase 2 (per scope):
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -54,6 +54,14 @@ class RunValidationError(Exception):
 
 class RunExecutionError(Exception):
     """Raised when a run fails during execution."""
+
+
+class NonRetryableStepError(Exception):
+    """Raised when a step fails with a non-retryable error.
+
+    Unlike transient errors (timeout, rate limit), this should NOT be
+    retried. Examples: tool sandbox not implemented, unknown step kind.
+    """
 
 
 # ──────────────────────────────────────────────
@@ -109,7 +117,7 @@ async def create_run(
     await db.flush()
 
     # Store input context in the run's spans (trace) — a run-level span
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     run_span = Span(
         run_id=run.id,
         kind="run",
@@ -181,7 +189,7 @@ async def execute_run(
 
     # Mark running
     run.status = "running"
-    run.started_at = datetime.utcnow()
+    run.started_at = datetime.now(timezone.utc)
     run.error_summary = None
     await db.flush()
 
@@ -205,12 +213,31 @@ async def execute_run(
     if input_context:
         prior_outputs["input"] = input_context
 
+    # Global run timeout: sum of step timeouts + margin.
+    # If the run exceeds this deadline, it is marked timed_out.
+    total_timeout = sum((s.timeout_seconds or 300) for s in steps) + settings.RUN_TIMEOUT_MARGIN_SECONDS
+    run_deadline = datetime.now(timezone.utc) + timedelta(seconds=total_timeout)
+
     for step in steps:
+        # Check global run timeout
+        if datetime.now(timezone.utc) >= run_deadline:
+            run.status = "timed_out"
+            run.ended_at = datetime.now(timezone.utc)
+            run.error_summary = f"Run exceeded global timeout of {total_timeout}s"
+            # Mark remaining pending/running steps as timed_out
+            for rs in run_step_map.values():
+                if rs.status in ("pending", "running"):
+                    rs.status = "timed_out"
+                    rs.ended_at = datetime.now(timezone.utc)
+            await db.commit()
+            logger.warning("Run %s timed out after %ds", run.id, total_timeout)
+            return run
+
         # Check cancellation between steps
         await db.refresh(run)
         if run.cancel_requested:
             run.status = "cancelled"
-            run.ended_at = datetime.utcnow()
+            run.ended_at = datetime.now(timezone.utc)
             run.error_summary = "Cancelled by user"
             # Mark remaining pending steps as cancelled
             for rs in run_step_map.values():
@@ -226,7 +253,7 @@ async def execute_run(
 
         rs = run_step_map[step.id]
         rs.status = "running"
-        rs.started_at = datetime.utcnow()
+        rs.started_at = datetime.now(timezone.utc)
         await db.flush()
 
         # Execute step with retry
@@ -241,7 +268,7 @@ async def execute_run(
         if step_output.get("cancelled"):
             # Cancellation during step execution
             run.status = "cancelled"
-            run.ended_at = datetime.utcnow()
+            run.ended_at = datetime.now(timezone.utc)
             run.error_summary = "Cancelled during step execution"
             await db.commit()
             return run
@@ -249,14 +276,14 @@ async def execute_run(
         if step_output.get("ok"):
             rs.status = "completed"
             rs.output_json = step_output.get("output")
-            rs.ended_at = datetime.utcnow()
+            rs.ended_at = datetime.now(timezone.utc)
             prior_outputs[step.step_key] = step_output.get("output")
         else:
             rs.status = "failed"
             rs.error = step_output.get("error")
-            rs.ended_at = datetime.utcnow()
+            rs.ended_at = datetime.now(timezone.utc)
             run.status = "failed"
-            run.ended_at = datetime.utcnow()
+            run.ended_at = datetime.now(timezone.utc)
             run.error_summary = step_output.get("error")
             await db.commit()
             logger.error("Run %s failed at step '%s': %s", run.id, step.name, step_output.get("error"))
@@ -266,7 +293,7 @@ async def execute_run(
 
     # All steps completed
     run.status = "completed"
-    run.ended_at = datetime.utcnow()
+    run.ended_at = datetime.now(timezone.utc)
     run.current_step_id = None
     run.error_summary = None
     await db.commit()
@@ -301,7 +328,7 @@ async def _execute_step_with_retry(
         await db.refresh(run)
         if run.cancel_requested:
             rs.status = "cancelled"
-            rs.ended_at = datetime.utcnow()
+            rs.ended_at = datetime.now(timezone.utc)
             await db.flush()
             return {"cancelled": True}
 
@@ -321,7 +348,14 @@ async def _execute_step_with_retry(
                     "error": f"Unknown step kind: {step.kind}",
                 }
 
-            # Record a span for this step
+            # Record a span for this step. For LLM steps, promote
+            # model + token counts into the span meta for observability.
+            span_meta: Dict[str, Any] = {"attempt": attempt + 1}
+            if step.kind == "llm" and isinstance(output, dict):
+                if output.get("model"):
+                    span_meta["model"] = output["model"]
+                if output.get("tokens"):
+                    span_meta["tokens"] = output["tokens"]
             await _record_step_span(
                 db=db,
                 run=run,
@@ -329,9 +363,25 @@ async def _execute_step_with_retry(
                 rs=rs,
                 success=True,
                 output=output,
-                meta={"attempt": attempt + 1},
+                meta=span_meta,
             )
             return {"ok": True, "output": output}
+
+        except NonRetryableStepError as exc:
+            # Non-retryable: fail immediately, record span, do NOT retry.
+            rs.status = "failed"
+            rs.error = str(exc)
+            rs.ended_at = datetime.now(timezone.utc)
+            await _record_step_span(
+                db=db,
+                run=run,
+                step=step,
+                rs=rs,
+                success=False,
+                error=str(exc),
+                meta={"attempt": attempt + 1, "retryable": False},
+            )
+            return {"ok": False, "error": str(exc)}
 
         except (TimeoutError, RuntimeError) as exc:
             # Transient — retryable
@@ -398,13 +448,31 @@ async def _execute_tool_step(
 ) -> Dict[str, Any]:
     """
     Execute a tool step. STUB — Tool Sandbox not implemented in Phase 2.
-    Returns a structured error indicating the tool is unavailable.
+
+    Raises NonRetryableStepError (not RuntimeError) so the retry loop
+    does NOT waste retries on a guaranteed-persistent failure.
+
+    Phase 3 will implement real tool dispatch: extract the tool input
+    from tool_refs, look up the tool in the Tool registry, validate
+    against its input_schema, and await the sandboxed result.
     """
     tool_refs = step.tool_refs or []
-    tool_name = tool_refs[0] if tool_refs else "unknown"
-    result = await tool_service.execute_tool(tool_name, {}, timeout_seconds)
+    if not tool_refs:
+        raise NonRetryableStepError("Tool step has no tool_refs configured")
+
+    # tool_refs entries may be plain strings or dicts with
+    # {tool_name, input}. Extract the first tool name + input.
+    first_ref = tool_refs[0]
+    if isinstance(first_ref, dict):
+        tool_name = first_ref.get("tool_name") or first_ref.get("name") or "unknown"
+        tool_input = first_ref.get("input") or first_ref.get("args") or {}
+    else:
+        tool_name = first_ref
+        tool_input = {}
+
+    result = await tool_service.execute_tool(tool_name, tool_input, timeout_seconds)
     if not result.get("ok"):
-        raise RuntimeError(result.get("message", "Tool not implemented"))
+        raise NonRetryableStepError(result.get("message", "Tool not implemented"))
     return result
 
 
@@ -443,7 +511,7 @@ async def _record_step_span(
     meta: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Record a trace span for a step execution."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     span = Span(
         run_id=run.id,
         step_id=step.id,
@@ -486,17 +554,23 @@ def _render_template(
     rendered = rendered.replace("{{step_name}}", step.name or "")
     rendered = rendered.replace("{{step_key}}", step.step_key or "")
 
-    # Substitute prior outputs
+    # Substitute prior outputs (with truncation to prevent context overflow)
     for key, value in prior_outputs.items():
         if isinstance(value, dict):
             text = value.get("text", str(value))
         else:
             text = str(value)
+        # Truncate oversized prior outputs to protect the LLM context window
+        if len(text) > settings.MAX_CONTEXT_CHARS:
+            text = text[: settings.MAX_CONTEXT_CHARS] + "\n...[truncated]"
         rendered = rendered.replace(f"{{{{prior.{key}}}}}", text)
 
-    # Generic input substitution
+    # Generic input substitution (also truncated)
     if "input" in prior_outputs:
-        rendered = rendered.replace("{{input}}", str(prior_outputs["input"]))
+        input_text = str(prior_outputs["input"])
+        if len(input_text) > settings.MAX_CONTEXT_CHARS:
+            input_text = input_text[: settings.MAX_CONTEXT_CHARS] + "\n...[truncated]"
+        rendered = rendered.replace("{{input}}", input_text)
 
     return rendered
 
@@ -542,7 +616,7 @@ async def reap_stale_runs(db: AsyncSession) -> int:
     A real implementation would use a lock (e.g. Redis SETNX) to avoid
     double-reaping, but for Phase 2 a simple age-based check suffices.
     """
-    threshold = datetime.utcnow() - timedelta(minutes=settings.STALE_RUN_THRESHOLD_MINUTES)
+    threshold = datetime.now(timezone.utc) - timedelta(minutes=settings.STALE_RUN_THRESHOLD_MINUTES)
 
     result = await db.execute(
         select(Run).where(
@@ -554,7 +628,7 @@ async def reap_stale_runs(db: AsyncSession) -> int:
 
     for run in stale_runs:
         run.status = "failed"
-        run.ended_at = datetime.utcnow()
+        run.ended_at = datetime.now(timezone.utc)
         run.error_summary = (
             f"Run exceeded stale threshold ({settings.STALE_RUN_THRESHOLD_MINUTES} min) — "
             "worker likely crashed. Marked failed by watchdog."

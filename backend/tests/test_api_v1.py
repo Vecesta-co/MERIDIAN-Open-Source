@@ -15,11 +15,8 @@ from httpx import AsyncClient
 API_V1_ENDPOINTS = [
     # Missions (DELETE only; other missions endpoints implemented in Phase 1)
     ("DELETE", "/api/v1/missions/00000000-0000-0000-0000-000000000001"),
-    # Runs
-    ("GET", "/api/v1/runs"),
-    ("POST", "/api/v1/runs"),
-    ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001"),
-    ("POST", "/api/v1/runs/00000000-0000-0000-0000-000000000001/cancel"),
+    # Runs — core lifecycle endpoints implemented in Phase 2 (POST/GET/cancel).
+    # Only trace/summary/evals remain 501 placeholders (Phase 4+).
     ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/trace"),
     ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/summary"),
     ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/evals"),

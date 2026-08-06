@@ -7,7 +7,7 @@ NOTE: This is a stub — relationships and business logic methods will be added 
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy import (
     Column, String, Text, Boolean, Integer, Float,
@@ -31,6 +31,11 @@ UUID = Uuid
 JSONB = JSON().with_variant(_PG_JSONB, "postgresql")
 
 
+def utcnow() -> datetime:
+    """Return the current UTC time as a timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -48,8 +53,8 @@ class Mission(Base):
     goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     state: Mapped[str] = mapped_column(SAEnum("draft", "published", "archived", name="mission_state"), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     versions = relationship("MissionVersion", back_populates="mission", cascade="all, delete-orphan")
@@ -70,7 +75,7 @@ class MissionVersion(Base):
     version_int: Mapped[int] = mapped_column(Integer, nullable=False)
     yaml_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     compiled_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     mission = relationship("Mission", back_populates="versions")
     steps = relationship("Step", back_populates="mission_version", cascade="all, delete-orphan")
@@ -104,8 +109,8 @@ class Step(Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300)
     depends_on: Mapped[Optional[dict]] = mapped_column(JSONB, default=list)
     config: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     mission_version = relationship("MissionVersion", back_populates="steps")
@@ -133,8 +138,8 @@ class Run(Base):
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     error_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(50), default="manual")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     mission = relationship("Mission")
     mission_version = relationship("MissionVersion", back_populates="runs")
@@ -166,7 +171,7 @@ class RunStep(Base):
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     output_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     run = relationship("Run", back_populates="run_steps")
     step = relationship("Step", back_populates="run_steps")
@@ -195,7 +200,7 @@ class Span(Base):
     output_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     error_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     meta_json: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     run = relationship("Run", back_populates="spans")
 
@@ -213,8 +218,8 @@ class Tool(Base):
     input_schema: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
     output_schema: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 # ──────────────────────────────────────────────
@@ -231,13 +236,13 @@ class Approval(Base):
         SAEnum("pending", "approved", "rejected", "expired", name="approval_status"),
         default="pending"
     )
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     reviewer_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     run = relationship("Run", back_populates="approvals")
 
@@ -254,8 +259,8 @@ class EvalDefinition(Base):
     target: Mapped[str] = mapped_column(SAEnum("run", "step", "tool", name="eval_target"), nullable=False)
     config: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
     threshold: Mapped[float] = mapped_column(Float, default=0.5)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 # ──────────────────────────────────────────────
@@ -273,7 +278,7 @@ class EvalResult(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
     verdict: Mapped[bool] = mapped_column(Boolean, nullable=False)
     evidence_json: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 # ──────────────────────────────────────────────
@@ -288,5 +293,5 @@ class Secret(Base):
     storage_type: Mapped[str] = mapped_column(SAEnum("env_ref", "encrypted", name="secret_storage_type"), nullable=False)
     ciphertext: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     env_key_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

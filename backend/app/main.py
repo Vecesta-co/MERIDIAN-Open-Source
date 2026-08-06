@@ -8,6 +8,7 @@ Phase 0: Foundation & Data Contracts
 - All non-health routes return 501 Not Implemented
 """
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
@@ -26,7 +27,7 @@ from app.api.v1 import (
 )
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
-from app.db.session import check_db_connection
+from app.db.session import check_db_connection, async_session_factory
 from app.models.schemas import HealthResponse, NotImplementedResponse
 
 # Setup logging on import
@@ -101,11 +102,51 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 logger.error("Failed to create SQLite tables on startup: %s", str(exc))
 
+        # Start the watchdog background task (Phase 2 Agent Runtime).
+        # It periodically reaps stale 'running' runs that were left behind
+        # by crashed workers.
+        app.state.watchdog_task = asyncio.create_task(_watchdog_loop())
+        logger.info(
+            "Watchdog started (interval=%ss, stale_threshold=%smin)",
+            settings.WATCHDOG_INTERVAL_SECONDS,
+            settings.STALE_RUN_THRESHOLD_MINUTES,
+        )
+
     @app.on_event("shutdown")
     async def shutdown_event():
+        # Cancel the watchdog task on shutdown
+        watchdog_task = getattr(app.state, "watchdog_task", None)
+        if watchdog_task is not None:
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
         logger.info("MERIDIAN API shutting down")
 
     return app
+
+
+async def _watchdog_loop() -> None:
+    """
+    Background task that periodically reaps stale running runs.
+
+    Runs every WATCHDOG_INTERVAL_SECONDS. Uses a fresh DB session per
+    sweep to avoid holding a connection open across the whole loop.
+    """
+    from app.services.run_service import reap_stale_runs
+
+    while True:
+        try:
+            async with async_session_factory() as db:
+                reaped = await reap_stale_runs(db)
+                if reaped:
+                    logger.info("Watchdog reaped %d stale run(s)", reaped)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("Watchdog sweep failed: %s", str(exc))
+        await asyncio.sleep(settings.WATCHDOG_INTERVAL_SECONDS)
 
 
 app = create_app()

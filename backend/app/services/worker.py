@@ -21,6 +21,7 @@ Requires Redis running (REDIS_URL env var).
 import asyncio
 import os
 import uuid
+from datetime import datetime, timezone
 
 from redis import Redis
 from rq import Queue
@@ -110,7 +111,7 @@ def execute_run_job(run_id_str: str) -> dict:
                 run = await db.get(Run, run_id)
                 if run and run.status not in ("completed", "failed", "cancelled", "timed_out"):
                     run.status = "failed"
-                    run.ended_at = __import__("datetime").datetime.utcnow()
+                    run.ended_at = datetime.now(timezone.utc)
                     run.error_summary = f"Worker error: {str(exc)}"
                     await db.commit()
         asyncio.run(_fail())
