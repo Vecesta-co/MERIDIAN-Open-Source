@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.db.models import Base
 from app.db.session import get_db_session
 
@@ -79,6 +79,27 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest.fixture
-def app_settings() -> settings.__class__:
+def app_settings() -> Settings:
     """Return the current application settings for test assertions."""
     return settings
+
+
+@pytest.fixture
+def mission_payload() -> Dict[str, str]:
+    """Payload for creating a test mission via N8N webhook."""
+    return {
+        "id": "test-mission-001",
+        "name": "Test Mission",
+        "description": "A test mission for N8N webhook testing",
+        "category": "integration",
+        "goal": "Test goal for mission execution",
+        "steps": [
+            {
+                "key": "step1",
+                "name": "First step",
+                "step_type": "llm",
+                "agent_key": "agent1",
+                "prompt_template": "Execute the task",
+            }
+        ],
+    }

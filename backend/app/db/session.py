@@ -5,7 +5,7 @@ Provides async database session factory and dependency injection.
 Uses SQLAlchemy async engine with connection pooling.
 """
 
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (

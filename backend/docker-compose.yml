@@ -1,0 +1,91 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/meridian
+      - DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/meridian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - API_KEY=${MERIDIAN_API_KEY}
+      - MERIDIAN_WEBHOOK_SECRET=${MERIDIAN_WEBHOOK_SECRET}
+      - LITELLM_MODEL=gpt-4o-mini
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+      - CORS_ORIGINS=http://localhost:3000
+      - EXECUTE_RUNS_IN_PROCESS=true
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: meridian
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "rq worker meridian-runs --url redis://redis:6379/0"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/meridian
+      - DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/meridian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - API_KEY=${MERIDIAN_API_KEY}
+      - LITELLM_MODEL=gpt-4o-mini
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - .:/app
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

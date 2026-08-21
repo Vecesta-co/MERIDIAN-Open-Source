@@ -314,14 +314,68 @@ async def test_retry_exhausted_marks_run_failed(async_client: AsyncClient):
 
 
 # ──────────────────────────────────────────────
-# 5. Tool Steps (Stub)
+# 5. Tool Steps (Phase 3 — Tool Sandbox)
 # ──────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_tool_step_returns_not_implemented(async_client: AsyncClient):
-    """A tool step fails with tool_not_implemented (Phase 2 stub)."""
+async def test_tool_step_executes_via_registry(async_client: AsyncClient):
+    """A tool step executes through the ToolRegistry (Phase 3)."""
     # Create a mission with a tool step
+    payload = valid_mission_payload()
+    payload["steps"].append(
+        {
+            "key": "tool_step",
+            "name": "Tool Step",
+            "step_type": "tool",
+            "tool_refs": [{"tool_name": "http_request"}],
+            "order_index": 2,
+        }
+    )
+    response = await async_client.post("/api/v1/missions", json=payload)
+    assert response.status_code == 201
+    mission_id = response.json()["id"]
+
+    publish_resp = await async_client.post(f"/api/v1/missions/{mission_id}/publish")
+    assert publish_resp.status_code == 200
+
+    run = await create_run_via_api(async_client, mission_id)
+
+    # Mock LLM to succeed for the llm steps
+    mock_llm = AsyncMock(return_value=mock_llm_output())
+
+    # Mock the tool execution to succeed
+    from app.tools.base import ToolResult
+
+    mock_tool_result = ToolResult(
+        ok=True,
+        data={"status_code": 200, "body": "Mocked HTTP response"},
+        metadata={"duration_ms": 5},
+    )
+
+    with patch(
+        "app.services.run_service.tool_service.execute_tool",
+        AsyncMock(return_value=mock_tool_result),
+    ), patch("app.services.run_service.llm_service.call_llm", mock_llm):
+        async with TestSessionFactory() as db:
+            executed = await execute_run(db, uuid.UUID(run["id"]))
+
+    # The tool step succeeds → run completes
+    assert executed.status == "completed"
+
+    # Verify the tool step output contains the TOOL_RESULT wrapper
+    get_resp = await async_client.get(f"/api/v1/runs/{run['id']}")
+    assert get_resp.status_code == 200
+    detail = get_resp.json()
+    tool_rs = detail["run_steps"][2]
+    assert tool_rs["status"] == "completed"
+    assert "TOOL_RESULT" in str(tool_rs["output_json"])
+
+
+@pytest.mark.asyncio
+async def test_tool_step_unknown_tool_fails_run(async_client: AsyncClient):
+    """A tool step referencing an unknown tool fails the run (non-retryable)."""
+    # Create a mission with a tool step referencing an unregistered tool
     payload = valid_mission_payload()
     payload["steps"].append(
         {
@@ -348,9 +402,9 @@ async def test_tool_step_returns_not_implemented(async_client: AsyncClient):
         async with TestSessionFactory() as db:
             executed = await execute_run(db, uuid.UUID(run["id"]))
 
-    # The tool step fails → run fails
+    # The tool step fails (unknown tool) → run fails
     assert executed.status == "failed"
-    assert "not implemented" in executed.error_summary.lower()
+    assert "web_search" in (executed.error_summary or "")
 
 
 # ──────────────────────────────────────────────
@@ -367,6 +421,7 @@ async def test_reap_stale_runs(async_client: AsyncClient):
     # Manually set a run to 'running' with an old started_at
     async with TestSessionFactory() as db:
         db_run = await db.get(Run, uuid.UUID(run["id"]))
+        assert db_run is not None
         db_run.status = "running"
         db_run.started_at = datetime.now(timezone.utc) - timedelta(minutes=60)
         await db.commit()
@@ -463,38 +518,95 @@ async def test_list_runs_endpoint(async_client: AsyncClient):
 
 
 # ──────────────────────────────────────────────
-# 9. Placeholder Endpoints (501)
+# 9. Run Evals (Phase 5)
 # ──────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_run_trace_placeholder_returns_501(async_client: AsyncClient):
-    """GET /runs/{id}/trace returns 501 (Phase 4 placeholder)."""
-    mission = await create_published_mission(async_client)
-    run = await create_run_via_api(async_client, mission["id"])
-
-    response = await async_client.get(f"/api/v1/runs/{run['id']}/trace")
-    assert response.status_code == 501
-    assert response.json()["detail"] == "Not Implemented"
-
-
-@pytest.mark.asyncio
-async def test_run_summary_placeholder_returns_501(async_client: AsyncClient):
-    """GET /runs/{id}/summary returns 501 (Phase 4 placeholder)."""
-    mission = await create_published_mission(async_client)
-    run = await create_run_via_api(async_client, mission["id"])
-
-    response = await async_client.get(f"/api/v1/runs/{run['id']}/summary")
-    assert response.status_code == 501
-    assert response.json()["detail"] == "Not Implemented"
-
-
-@pytest.mark.asyncio
-async def test_run_evals_placeholder_returns_501(async_client: AsyncClient):
-    """GET /runs/{id}/evals returns 501 (Phase 5 placeholder)."""
+async def test_run_evals_empty_for_new_run(async_client: AsyncClient):
+    """GET /runs/{id}/evals returns an empty list before any evals run."""
     mission = await create_published_mission(async_client)
     run = await create_run_via_api(async_client, mission["id"])
 
     response = await async_client.get(f"/api/v1/runs/{run['id']}/evals")
-    assert response.status_code == 501
-    assert response.json()["detail"] == "Not Implemented"
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# ──────────────────────────────────────────────
+# 10. Approval Gate (Phase 6)
+# ──────────────────────────────────────────────
+
+
+def approval_mission_payload() -> dict:
+    """A valid mission payload with an LLM step followed by an approval step."""
+    return {
+        "name": "Approval Gate Test Mission",
+        "goal": "Test the approval gate",
+        "description": "A mission that pauses at a human approval step",
+        "steps": [
+            {
+                "key": "gen",
+                "name": "Generate",
+                "step_type": "llm",
+                "agent_key": "agent_1",
+                "prompt_template": "Draft content. Prior: {{prior.input}}",
+                "order_index": 0,
+                "max_retries": 1,
+                "timeout_seconds": 60,
+            },
+            {
+                "key": "review",
+                "name": "Human Review",
+                "step_type": "approval",
+                "approval_required": True,
+                "order_index": 1,
+                "timeout_seconds": 3600,
+            },
+        ],
+    }
+
+
+async def create_published_approval_mission(client: AsyncClient) -> dict:
+    """Helper: create + publish a mission with an approval step."""
+    response = await client.post("/api/v1/missions", json=approval_mission_payload())
+    assert response.status_code == 201, f"Failed to create mission: {response.text}"
+    publish_resp = await client.post(f"/api/v1/missions/{response.json()['id']}/publish")
+    assert publish_resp.status_code == 200, f"Failed to publish: {publish_resp.text}"
+    return publish_resp.json()
+
+
+@pytest.mark.asyncio
+async def test_execute_run_pauses_at_approval(async_client: AsyncClient):
+    """A run pauses at an approval step with a pending Approval record."""
+    mission = await create_published_approval_mission(async_client)
+    run = await create_run_via_api(async_client, mission["id"])
+
+    mock_llm = AsyncMock(return_value=mock_llm_output())
+    with patch("app.services.run_service.llm_service.call_llm", mock_llm):
+        async with TestSessionFactory() as db:
+            executed = await execute_run(db, uuid.UUID(run["id"]))
+
+    assert executed.status == "awaiting_approval"
+    assert executed.ended_at is None
+
+    # A pending approval record exists with context captured
+    from sqlalchemy import select
+
+    from app.db.models import Approval, RunStep
+
+    async with TestSessionFactory() as db:
+        approval_result = await db.execute(
+            select(Approval).where(Approval.run_id == uuid.UUID(run["id"]))
+        )
+        approval = approval_result.scalar_one()
+        assert approval.status == "pending"
+        assert approval.step_id is not None
+        assert "step_goal" in (approval.context_json or {})
+
+        steps_result = await db.execute(
+            select(RunStep).where(RunStep.run_id == uuid.UUID(run["id"]))
+        )
+        steps = steps_result.scalars().all()
+        assert len(steps) == 2
+        assert all(rs.status == "completed" for rs in steps)

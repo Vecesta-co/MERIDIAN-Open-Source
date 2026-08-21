@@ -28,6 +28,7 @@ from app.models.schemas import (
     MissionResponse,
     MissionWithStepsResponse,
     NotImplementedResponse,
+    ValidationError,
     ValidationResult,
     YamlExportResponse,
 )
@@ -141,11 +142,11 @@ async def validate_mission(request: Request):
             content=ValidationResult(
                 valid=False,
                 errors=[
-                    {
-                        "field": "body",
-                        "message": "Invalid JSON body",
-                        "code": "parse_error",
-                    }
+                    ValidationError(
+                        field="body",
+                        message="Invalid JSON body",
+                        code="parse_error",
+                    )
                 ],
             ).model_dump(),
         )
@@ -156,11 +157,11 @@ async def validate_mission(request: Request):
             content=ValidationResult(
                 valid=False,
                 errors=[
-                    {
-                        "field": "body",
-                        "message": "Request body must be a JSON object",
-                        "code": "invalid_type",
-                    }
+                    ValidationError(
+                        field="body",
+                        message="Request body must be a JSON object",
+                        code="invalid_type",
+                    )
                 ],
             ).model_dump(),
         )

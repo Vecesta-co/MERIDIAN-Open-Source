@@ -16,26 +16,15 @@ API_V1_ENDPOINTS = [
     # Missions (DELETE only; other missions endpoints implemented in Phase 1)
     ("DELETE", "/api/v1/missions/00000000-0000-0000-0000-000000000001"),
     # Runs — core lifecycle endpoints implemented in Phase 2 (POST/GET/cancel).
-    # Only trace/summary/evals remain 501 placeholders (Phase 4+).
-    ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/trace"),
-    ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/summary"),
-    ("GET", "/api/v1/runs/00000000-0000-0000-0000-000000000001/evals"),
-    # Tools
-    ("GET", "/api/v1/tools"),
+    # Trace/summary/spans implemented in Phase 4. Evals implemented in Phase 5.
+    # Tools — GET /tools and POST /tools/execute are implemented in Phase 3.
+    # Registration endpoints remain 501 placeholders.
     ("POST", "/api/v1/tools"),
     ("GET", "/api/v1/tools/00000000-0000-0000-0000-000000000001"),
     ("PUT", "/api/v1/tools/00000000-0000-0000-0000-000000000001"),
     ("DELETE", "/api/v1/tools/00000000-0000-0000-0000-000000000001"),
-    # Approvals
-    ("GET", "/api/v1/approvals"),
-    ("GET", "/api/v1/approvals/00000000-0000-0000-0000-000000000001"),
-    ("POST", "/api/v1/approvals/00000000-0000-0000-0000-000000000001/decide"),
-    # Evals
-    ("GET", "/api/v1/evals"),
-    ("POST", "/api/v1/evals"),
-    ("GET", "/api/v1/evals/00000000-0000-0000-0000-000000000001"),
-    ("PUT", "/api/v1/evals/00000000-0000-0000-0000-000000000001"),
-    ("DELETE", "/api/v1/evals/00000000-0000-0000-0000-000000000001"),
+    # Evals — definition CRUD + run evals implemented in Phase 5.
+    # Global results listing remains a 501 placeholder.
     ("GET", "/api/v1/evals/results"),
     ("GET", "/api/v1/evals/results/00000000-0000-0000-0000-000000000001"),
     # Traces

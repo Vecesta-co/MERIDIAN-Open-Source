@@ -6,7 +6,6 @@ These tests do NOT require a database or an HTTP client — they test
 the service-layer logic in isolation.
 """
 
-import pytest
 
 from app.services import mission_service
 from app.services.yaml_service import (

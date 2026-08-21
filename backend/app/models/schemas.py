@@ -1,4 +1,4 @@
-#n  MERIDIAN Pydantic Schemas.
+# MERIDIAN Pydantic Schemas.
 # Defines data contracts for all entities in the system.
 # These are used for API request/response validation and serialization.
 # No business logic is implemented here — only data structure definitions.
@@ -6,7 +6,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -47,7 +47,8 @@ class ApprovalStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
-    EXPIRED = "expired"
+    MODIFIED = "modified"
+    TIMED_OUT = "timed_out"
 
 
 class SpanKind(str, Enum):
@@ -77,10 +78,21 @@ class SecretStorageType(str, Enum):
     ENCRYPTED = "encrypted"
 
 
-class EvalTarget(str, Enum):
+class EvalScope(str, Enum):
     RUN = "run"
     STEP = "step"
-    TOOL = "tool"
+    TOOL_SPAN = "tool_span"
+
+
+class EvalType(str, Enum):
+    RULE_BASED = "rule_based"
+    SCHEMA = "schema"
+    LLM_JUDGE = "llm_judge"
+
+
+class EvalVerdict(str, Enum):
+    PASS = "pass"
+    FAIL = "fail"
 
 
 # ──────────────────────────────────────────────
@@ -102,6 +114,7 @@ class MissionCreate(BaseSchema):
     description: Optional[str] = Field(None, description="Mission description")
     goal: Optional[str] = Field(None, description="Mission goal / objective")
     state: MissionState = Field(default=MissionState.DRAFT, description="Mission state")
+    tags: Optional[List[str]] = Field(None, description="Mission tags (used for eval attachment)")
 
 
 class MissionUpdate(BaseSchema):
@@ -109,6 +122,7 @@ class MissionUpdate(BaseSchema):
     description: Optional[str] = None
     goal: Optional[str] = None
     state: Optional[MissionState] = None
+    tags: Optional[List[str]] = None
 
 
 class MissionResponse(BaseSchema):
@@ -118,6 +132,7 @@ class MissionResponse(BaseSchema):
     goal: Optional[str] = None
     state: MissionState
     version: int = Field(default=1, description="Current mission version")
+    tags: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -275,7 +290,7 @@ class RunStepDetailResponse(RunStepResponse):
 class RunDetailResponse(RunResponse):
     """Run detail including its steps and spans."""
     run_steps: List[RunStepDetailResponse] = Field(default_factory=list)
-    spans: List[SpanResponse] = Field(default_factory=list)
+    spans: List["SpanResponse"] = Field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -306,15 +321,78 @@ class SpanResponse(BaseSchema):
     step_id: Optional[UUID] = None
     parent_span_id: Optional[UUID] = None
     kind: SpanKind
+    span_type: Optional[str] = None
     name: str
     status: SpanStatus
+    severity: Optional[str] = "info"
     start_time: datetime
     end_time: Optional[datetime] = None
+    duration_ms: Optional[float] = None
+    model: Optional[str] = None
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    cost_usd: Optional[float] = None
     input_json: Optional[Dict[str, Any]] = None
     output_json: Optional[Dict[str, Any]] = None
     error_json: Optional[Dict[str, Any]] = None
     meta_json: Optional[Dict[str, Any]] = None
+    attributes: Optional[Dict[str, Any]] = None
     created_at: datetime
+
+
+class SpanNode(BaseSchema):
+    """A node in the nested trace tree."""
+    id: UUID
+    run_id: Optional[UUID] = None
+    step_id: Optional[UUID] = None
+    parent_span_id: Optional[UUID] = None
+    span_type: str = "system"
+    name: str
+    status: str = "ok"
+    severity: Optional[str] = "info"
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    duration_ms: Optional[float] = None
+    model: Optional[str] = None
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    cost_usd: float = 0.0
+    error_text: Optional[str] = None
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    children: List["SpanNode"] = Field(default_factory=list)
+
+
+class TraceTreeResponse(BaseSchema):
+    """Nested trace tree for a run."""
+    run_id: UUID
+    root: SpanNode
+
+
+class RunStepSummary(BaseSchema):
+    """Per-step summary in a run summary response."""
+    step_id: UUID
+    step_key: str
+    status: str = "completed"
+    attempts: int = 0
+    errors: int = 0
+    duration_ms: float = 0.0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+
+
+class RunSummaryResponse(BaseSchema):
+    """Aggregated summary of a run's execution."""
+    run_id: UUID
+    status: str
+    duration_ms: Optional[float] = None
+    span_count: int = 0
+    error_count: int = 0
+    total_tokens_in: int = 0
+    total_tokens_out: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    steps: List[RunStepSummary] = Field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -342,6 +420,43 @@ class ToolResponse(BaseSchema):
 
 
 # ──────────────────────────────────────────────
+# Tools (Phase 3 — Tool Sandbox)
+# ──────────────────────────────────────────────
+
+
+class ToolInfoResponse(BaseSchema):
+    """Metadata for a registered tool (GET /tools)."""
+    name: str = Field(..., description="Unique tool name")
+    description: str = Field(default="", description="Human-readable tool description")
+    input_schema: Dict[str, Any] = Field(..., description="JSON Schema for tool input")
+    default_timeout_seconds: int = Field(default=30, description="Default execution timeout")
+    requires_api_key: bool = Field(default=False, description="Whether the tool needs an API key")
+    api_key_env_var: Optional[str] = Field(None, description="Env var holding the required API key")
+
+
+class ToolExecuteRequest(BaseSchema):
+    """Request body for POST /tools/execute (admin/dev use)."""
+    tool_name: str = Field(..., min_length=1, max_length=100, description="Registered tool name")
+    input: Dict[str, Any] = Field(..., description="Tool input validated against the tool's schema")
+    timeout_seconds: Optional[int] = Field(
+        None, ge=1, le=600, description="Optional per-call timeout override"
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="If True, simulate execution without making external calls (returns a canned success)",
+    )
+
+
+class ToolExecuteResponse(BaseSchema):
+    """Response for POST /tools/execute."""
+    ok: bool = Field(..., description="Whether the tool executed successfully")
+    data: Optional[Dict[str, Any]] = Field(None, description="Tool output payload")
+    error: Optional[str] = Field(None, description="Machine-readable error code")
+    message: Optional[str] = Field(None, description="Human-readable error/status message")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Extra info (duration, truncation, etc.)")
+
+
+# ──────────────────────────────────────────────
 # Approvals
 # ──────────────────────────────────────────────
 
@@ -352,6 +467,9 @@ class ApprovalDecision(BaseSchema):
         None, description="Decision context or modified output"
     )
     reviewer_id: Optional[str] = Field(None, description="Reviewer identifier")
+    decision_notes: Optional[str] = Field(
+        None, description="Human-readable notes about the decision"
+    )
 
 
 class ApprovalResponse(BaseSchema):
@@ -361,9 +479,26 @@ class ApprovalResponse(BaseSchema):
     status: ApprovalStatus
     requested_at: datetime
     decided_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    decision_json: Optional[Dict[str, Any]] = None
-    reviewer_id: Optional[str] = None
+    decided_by: Optional[str] = None
+    decision_notes: Optional[str] = None
+    context_json: Optional[Dict[str, Any]] = Field(
+        None, description="Step goal, mission name, prior step summary at approval time"
+    )
+    original_output: Optional[Dict[str, Any]] = Field(
+        None, description="Step output at the time approval was requested"
+    )
+    modified_output: Optional[Dict[str, Any]] = Field(
+        None, description="Step output after a 'modify' decision (nullable); validated against step output schema on resume"
+    )
+    timeout_at: Optional[datetime] = Field(
+        None, description="When the approval timed out (if applicable)"
+    )
+    timeout_seconds: Optional[int] = Field(
+        None, ge=1, description="Step timeout in seconds that triggered the approval"
+    )
+    webhook_url: Optional[str] = Field(
+        None, description="URL to notify on approval status changes (POST JSON payload)"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -374,18 +509,41 @@ class ApprovalResponse(BaseSchema):
 
 
 class EvalDefinitionCreate(BaseSchema):
-    name: str = Field(..., min_length=1, max_length=255)
-    target: EvalTarget
-    config: Optional[Dict[str, Any]] = Field(None, description="Eval configuration")
-    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    name: str = Field(..., min_length=1, max_length=255, description="Eval name")
+    scope: EvalScope = Field(..., description="Artifact scope: run, step, or tool_span")
+    target_step_key: Optional[str] = Field(
+        None, description="Step key evaluated when scope is step or tool_span"
+    )
+    eval_type: EvalType = Field(..., description="Evaluator type")
+    config: Optional[Dict[str, Any]] = Field(None, description="Evaluator configuration")
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0, description="Pass threshold")
+    mission_id: Optional[UUID] = Field(None, description="Attach to a specific mission")
+    tags: Optional[List[str]] = Field(None, description="Attach to missions sharing any of these tags")
+    webhook_url: Optional[str] = Field(
+        None, description="URL to notify on eval result (POST on failure)"
+    )
+
+
+class EvalDefinitionUpdate(BaseSchema):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    config: Optional[Dict[str, Any]] = None
+    threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    mission_id: Optional[UUID] = None
+    tags: Optional[List[str]] = None
+    webhook_url: Optional[str] = None
 
 
 class EvalDefinitionResponse(BaseSchema):
     id: UUID
     name: str
-    target: EvalTarget
+    scope: EvalScope
+    target_step_key: Optional[str] = None
+    eval_type: EvalType
     config: Optional[Dict[str, Any]] = None
     threshold: float
+    mission_id: Optional[UUID] = None
+    tags: Optional[List[str]] = None
+    webhook_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -397,14 +555,24 @@ class EvalDefinitionResponse(BaseSchema):
 
 class EvalResultResponse(BaseSchema):
     id: UUID
-    eval_definition_id: UUID
+    eval_id: UUID
+    eval_name: Optional[str] = None
     run_id: UUID
     step_id: Optional[UUID] = None
     span_id: Optional[UUID] = None
-    score: float
-    verdict: bool
-    evidence_json: Optional[Dict[str, Any]] = None
+    verdict: EvalVerdict
+    score: Optional[float] = None
+    evidence: Optional[Dict[str, Any]] = None
     created_at: datetime
+
+
+class EvalRunResponse(BaseSchema):
+    run_id: UUID
+    triggered: bool
+    skipped: bool = False
+    reason: Optional[str] = None
+    evaluated: int = 0
+    results: List[EvalResultResponse] = Field(default_factory=list)
 
 
 # ──────────────────────────────────────────────

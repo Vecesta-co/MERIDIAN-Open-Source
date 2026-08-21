@@ -1,12 +1,14 @@
 # 🧠 MERIDIAN — AI Agent Operations Platform
 
+**Contributed by Vecesta.co**
+
 **Design, run, watch, and trust your AI agents — without writing a framework.**
 
 MERIDIAN is a self-hosted, open-source platform that gives non-engineer AI utilizers and backend teams a single environment to define agent missions as structured workflows, execute them against sandboxed tools, observe every decision in real time, run automated and human evals, enforce approval gates, and iterate with confidence.
 
 ---
 
-## 🚀 Quick Start (Phase 0)
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -35,11 +37,9 @@ cp ../.env.example .env
 # Edit .env with your database credentials
 
 # 5. Run database migrations
-# Connect to your Postgres instance and execute migrations in order:
-# psql -U postgres -d meridian -f migrations/001_types.sql
-# psql -U postgres -d meridian -f migrations/002_tables.sql
-# psql -U postgres -d meridian -f migrations/003_indexes.sql
-# psql -U postgres -d meridian -f migrations/004_triggers.sql
+# With PostgreSQL: psql -U postgres -d meridian -f migrations/001_types.sql
+# (repeat for 002_tables.sql, 003_indexes.sql, 004_triggers.sql)
+# For a quick start without Postgres, SQLite is also supported (see .env).
 
 # 6. Start the API server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -48,6 +48,28 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 curl http://localhost:8000/health
 # Expected: {"status":"healthy","version":"0.1.0","timestamp":"...","database_connected":true}
 ```
+
+### Run the Self-Contained Demo
+
+```bash
+# From the backend directory
+python seed_demo.py
+```
+
+The demo creates a published mission (tool + approval steps, so no LLM API key is
+needed), creates a run, and executes it **in-process** — no Redis or worker required.
+The run executes the tool steps and pauses at the approval gate, printing the approval
+ID to approve via `POST /api/v1/approvals/{id}/decide`.
+
+### Run the Full Stack (Docker Compose)
+
+```bash
+docker compose -f backend/docker-compose.yml up -d
+```
+
+This starts PostgreSQL, Redis, the API, an RQ worker, and the dashboard UI.
+The API is configured with `EXECUTE_RUNS_IN_PROCESS=true` so runs also progress
+even if the worker/Redis is unavailable.
 
 ### Frontend (Next.js Skeleton)
 
@@ -71,17 +93,18 @@ npm run dev
 bash
 # From the backend directory
 cd backend
-pytest -v
-# Expected: All tests pass (health returns 200, API routes return 501)
+python -m pytest tests -q
+# Expected: 265 passed — the suite is fully green with no external
+# dependencies (in-memory SQLite, no Redis/Postgres/API calls).
 ```
 
 ### Using Docker Compose (Alternative)
 
 ```
 bash
-docker compose -f infra/docker-compose.yml up -d
-# This starts PostgreSQL with auto-migration
-# Backend API will be added in later phases
+docker compose -f backend/docker-compose.yml up -d
+# Full stack: PostgreSQL + Redis + API + worker + dashboard UI.
+# The older infra/docker-compose.yml only provides PostgreSQL.
 ```
 
 ---
@@ -92,57 +115,44 @@ docker compose -f infra/docker-compose.yml up -d
 meridian/
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                 # FastAPI app entry point
+│   │   ├── main.py                 # FastAPI app entry point + middleware (auth, rate limit)
 │   │   ├── api/
-│   │   │   └── v1/
-│   │   │       ├── __init__.py
-│   │   │       ├── missions.py     # Mission CRUD (placeholder)
-│   │   │       ├── mission_versions.py  # Mission versioning (placeholder)
-│   │   │       ├── steps.py        # Step management (placeholder)
-│   │   │       ├── runs.py         # Run execution (placeholder)
-│   │   │       ├── tools.py        # Tool registry (placeholder)
-│   │   │       ├── approvals.py    # Approval gates (placeholder)
-│   │   │       ├── evals.py        # Eval definitions (placeholder)
-│   │   │       └── traces.py       # Trace observability (placeholder)
+│   │   │   └── v1/                 # missions, mission_versions, runs, tools, approvals, evals, traces
 │   │   ├── core/
-│   │   │   ├── __init__.py
-│   │   │   ├── config.py           # Pydantic Settings loader
-│   │   │   └── logging.py          # Structured logging (no secrets)
+│   │   │   ├── config.py           # Pydantic Settings loader (.env)
+│   │   │   └── logging.py          # Structured logging with SensitiveDataFilter
 │   │   ├── db/
-│   │   │   ├── __init__.py
 │   │   │   ├── session.py          # Async DB session management
 │   │   │   └── models.py           # SQLAlchemy ORM models
-│   │   └── models/
-│   │       ├── __init__.py
-│   │       └── schemas.py          # Pydantic data contracts
+│   │   ├── models/
+│   │   │   └── schemas.py          # Pydantic data contracts
+│   │   ├── services/               # run_service, mission_service, tool_service, eval_service, trace_service, worker
+│   │   └── tools/
+│   │       ├── base.py             # BaseTool (TypeAdapter-based JSON schema)
+│   │       ├── registry.py         # Tool registry + dispatch/validation
+│   │       └── builtins/           # http_request, supabase_crud, supabase_query, firecrawl_scrape, browseuse_action, rag_query
 │   ├── migrations/
 │   │   ├── 001_types.sql           # Enum types
 │   │   ├── 002_tables.sql          # Core tables with FKs
 │   │   ├── 003_indexes.sql         # Performance indexes
 │   │   └── 004_triggers.sql        # Auto-update triggers
-│   ├── tests/
-│   │   ├── __init__.py
-│   │   ├── conftest.py             # Test fixtures
-│   │   ├── test_health.py          # Health endpoint tests
-│   │   └── test_api_v1.py          # 501 placeholder route tests
-│   ├── seed.sql                    # Demo seed data
+│   ├── tests/                      # 265 tests, fully green (in-memory SQLite)
+│   ├── ui/                         # Static dashboard (nginx-served)
+│   ├── seed_demo.py                # Self-contained demo (in-process run execution)
+│   ├── docker-compose.yml          # Full stack: postgres + redis + api + worker + ui
 │   └── requirements.txt
 ├── frontend/
 │   ├── package.json
 │   ├── next.config.js
 │   ├── .env.example
-│   ├── pages/
-│   │   ├── index.js                # MERIDIAN UI skeleton
-│   │   └── _app.js
-│   └── styles/
-│       └── globals.css
+│   └── pages/                      # MERIDIAN UI skeleton (Next.js)
 ├── infra/
-│   └── docker-compose.yml          # Infrastructure (placeholder)
+│   └── docker-compose.yml          # Infrastructure (PostgreSQL only)
 ├── docs/
 │   └── architecture.md             # System architecture docs
+├── seed.sql                        # Demo seed data
 ├── .env.example                    # Environment template
-├── TODO.md                         # Phase 0 progress tracker
+├── TODO.md                         # Progress tracker
 └── README.md
 ```
 
@@ -207,18 +217,62 @@ meridian/
 | GET | `/api/v1/runs/{id}` | ✅ 200 | Get run detail with steps and spans |
 | GET | `/api/v1/runs/{id}/steps` | ✅ 200 | Get run's steps ordered by order_index |
 | POST | `/api/v1/runs/{id}/cancel` | ✅ 200 | Cancel a run (sets cancel_requested) |
-| GET | `/api/v1/runs/{id}/trace` | 🔧 501 | Trace Engine — Phase 4 |
-| GET | `/api/v1/runs/{id}/summary` | 🔧 501 | Summary — Phase 4 |
-| GET | `/api/v1/runs/{id}/evals` | 🔧 501 | Eval Suite — Phase 5 |
+| GET | `/api/v1/runs/{id}/trace` | ✅ 200 | Full run trace tree (Phase 4) |
+| GET | `/api/v1/runs/{id}/summary` | ✅ 200 | Run summary with step attempts (Phase 4) |
+| GET | `/api/v1/runs/{id}/evals` | ✅ 200 | Eval results for a run (Phase 5) |
 
-### Phase 3+ — Not Yet Implemented (501)
+### Phase 3 — Tool Sandbox (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/api/v1/tools` | ✅ 200 | List registered tools |
+| POST | `/api/v1/tools/execute` | ✅ 200 | Execute a tool with validated input |
+
+### Phase 4 — Trace Engine (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/api/v1/runs/{id}/trace` | ✅ 200 | Full run trace tree with cycle detection |
+| GET | `/api/v1/runs/{id}/summary` | ✅ 200 | Run summary (step attempts, duration, cost) |
+| GET | `/api/v1/runs/{id}/spans` | ✅ 200 | Raw span records for a run |
+| GET | `/api/v1/runs/failing-steps` | ✅ 200 | Cross-run step failure aggregation |
+| GET | `/api/v1/runs/failing-steps/{step_id}/runs` | ✅ 200 | Runs where a specific step failed |
+
+### Phase 5 — Eval Suite (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/api/v1/evals` | ✅ 200 | List eval definitions |
+| POST | `/api/v1/evals` | ✅ 201 | Create an eval definition |
+| GET | `/api/v1/evals/{id}` | ✅ 200 | Get an eval definition |
+| PUT | `/api/v1/evals/{id}` | ✅ 200 | Update an eval definition |
+| DELETE | `/api/v1/evals/{id}` | ✅ 204 | Delete an eval definition |
+| GET | `/api/v1/runs/{id}/evals` | ✅ 200 | Eval results for a run |
+| POST | `/api/v1/runs/{id}/evals/run` | ✅ 200 | Manually re-run attached evals (terminal runs only) |
+
+### Phase 6 — Approval Gate (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/api/v1/approvals` | ✅ 200 | List approvals (optionally filtered by status) |
+| GET | `/api/v1/approvals/{id}` | ✅ 200 | Get an approval with context and trace |
+| POST | `/api/v1/approvals/{id}/decide` | ✅ 200 | Approve / reject / modify an approval |
+
+### Phase 8 — Integration Bus (Implemented)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| POST | `/api/v1/tools/n8n-webhook/{mission_id}` | ✅ 200 | N8N webhook — creates a run from a published mission (HMAC-signed, replay-protected) |
+
+### Phase 5+ — Not Yet Implemented (501)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/api/v1/tools` | Tool registry — Phase 3 |
-| GET | `/api/v1/traces` | Trace engine — Phase 4 |
-| GET/POST | `/api/v1/evals` | Eval suite — Phase 5 |
-| GET/POST | `/api/v1/approvals` | Approval gates — Phase 6 |
+| GET | `/api/v1/evals/results` | Global eval results listing — Phase 5+ |
+| GET | `/api/v1/evals/results/{id}` | Get an eval result — Phase 5+ |
+| POST | `/api/v1/tools` | Tool registration — Phase 5+ |
+| GET/PUT/DELETE | `/api/v1/tools/{id}` | Tool management — Phase 5+ |
+| DELETE | `/api/v1/missions/{id}` | Delete mission — Phase 5+ |
 
 ### Mission Designer Curl Examples
 
@@ -352,22 +406,29 @@ mypy .
 | 0 | Foundation & Data Contracts | ✅ Complete |
 | 1 | Mission Designer | ✅ Complete |
 | 2 | Agent Runtime | ✅ Complete |
-| 3 | Tool Sandbox | 🔜 Planned |
-| 4 | Trace Engine | 🔜 Planned |
-| 5 | Eval Suite | 🔜 Planned |
-| 6 | Approval Gate | 🔜 Planned |
-| 7 | Mission Dashboard | 🔜 Planned |
-| 8 | Integration Bus | 🔜 Planned |
-| 9 | MVP Hardening | 🔜 Planned |
+| 3 | Tool Sandbox | ✅ Complete |
+| 4 | Trace Engine | ✅ Complete |
+| 5 | Eval Suite | ✅ Complete |
+| 6 | Approval Gate | ✅ Complete |
+| 7 | Mission Dashboard | ✅ Complete |
+| 8 | Integration Bus (N8N webhook) | ✅ Complete |
+| 9 | MVP Hardening (auth, rate limiting) | ✅ Complete |
 
 ---
 
 ## 🔒 Security
 
+- API key authentication on all non-health routes (`X-API-Key` header), compared
+  using constant-time `hmac.compare_digest` to prevent timing attacks. Localhost
+  requests in dev mode (`DEBUG=true`) are exempt.
+- Rate limiting on write endpoints (sliding window, `429` with `Retry-After`),
+  disabled in debug mode.
+- N8N webhook requests are authenticated with an HMAC signature and replay
+  protection (timestamp + nonce).
 - Secrets are NEVER stored or logged in plaintext
 - Secrets table uses `storage_type` enum: `env_ref` (environment variable reference) or `encrypted` (ciphertext)
 - Logging system includes a `SensitiveDataFilter` that redacts potential secret leakage
-- API key authentication will be added in Phase 9
+- HTTP exception handlers sanitize internal error details unless `DEBUG=true`
 
 ---
 
@@ -379,4 +440,6 @@ MIT License — see LICENSE file for details.
 
 ## 🤝 Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines (coming in Phase 9).
+**Contributed by Vecesta.co**
+
+See [CONTRIBUTING.md](backend/CONTRIBUTING.md) for development workflow, code style, and testing guidelines.

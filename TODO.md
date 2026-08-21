@@ -1,27 +1,26 @@
-# MERIDIAN Phase 2 — Agent Runtime Verification Plan
+# MERIDIAN Phase 5 — Eval Suite Implementation Progress
 
-## ✅ Step 1: Unit Test Verification
-- [x] Re-run pytest after worker.py datetime fix → **138 passed, 4 warnings** (confirmed worker fix safe)
+## ✅ Phase 4 Complete (all critical fixes verified — 234 tests)
 
-## ✅ Step 2: Live End-to-End Testing
-- [x] Check environment (Redis NOT available, no LLM API key, SQLite dev DB)
-- [x] **Found + fixed a real bug**: stale SQLite dev DB missing Phase 2 columns (`runs.mission_id`, `runs.current_step_id`) → created `backend/migrate_sqlite_phase2.py` and ran it
-- [x] Start FastAPI server (uvicorn) → healthy against real dev DB
-- [x] Create + publish a mission
-- [x] POST /runs → 201, pending run created
-- [x] Verify run executes steps (real engine, mock LLM) → completed
-- [x] Cancel path → cancelled, cancel completed → 400
-- [x] Timeout path → terminal state
-- [x] Stale reaping (watchdog) → reaped 1
-- [x] GET run detail / steps verification
-- **Live verification: 42 passed, 0 failed**
+## Phase 5 Scope
+- [x] Data model: `eval_definitions` (scope run|step|tool_span, target_step_key,
+      eval_type rule_based|schema|llm_judge, config, threshold, mission_id, tags)
+      + `eval_results` (verdict pass|fail, nullable score, evidence) + `missions.tags`
+      (`models.py`, `migrations/008_phase5_eval_suite.sql`)
+- [x] API: POST/GET/PUT/DELETE `/evals`, GET `/runs/{id}/evals`,
+      POST `/runs/{id}/evals/run` (manual rerun) (`evals.py`, `runs.py`)
+- [x] Eval execution engine: non-blocking, reads run artifacts only, never
+      re-runs the mission (`eval_service.py`)
+- [x] Evaluators: rule_based (contains_any/all, not_contains), schema (jsonschema),
+      llm_judge (prompt template, score_range, threshold verdict)
+- [x] Attachment: by `mission_id` or tag overlap with the mission's tags
+- [x] Post-run hook enqueues eval job when Redis is configured; no-op otherwise
+      (evals never block execution) (`run_service.py`, `worker.py`)
+- [x] Eval trace spans: `kind="eval"` linked to run_id + parent run span
+- [x] Tests: 37 new (rule-based, schema, mocked llm_judge, CRUD, rerun,
+      eval spans, 8 edge cases) (`test_phase5_evals.py`, `test_phase5_evals_edge.py`)
+- [x] Full suite green (234 passed), mypy clean (37 files), ruff clean
 
-## 🔲 Remaining Coverage Gaps (needs infra)
-- [ ] RQ worker + Redis end-to-end (Redis not installed/running)
-- [ ] Real LLM call via LiteLLM (no API key configured)
-- [ ] These are infra-dependent, not code bugs
-
-## 📋 Final Report
-- [x] Phase 2 Agent Runtime works end-to-end against real DB
-- [x] Found + fixed dev DB migration gap
-- [x] Documented coverage gaps
+## Phase 5+ (out of scope)
+- [ ] Global eval results listing: GET `/evals/results`, GET `/evals/results/{id}`
+- [ ] Approval Gate (Phase 6), Mission Dashboard (Phase 7), Integration Bus (Phase 8)

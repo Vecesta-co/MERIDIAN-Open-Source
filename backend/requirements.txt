@@ -1,4 +1,4 @@
- # MERIDIAN Backend Dependencies
+# MERIDIAN Backend Dependencies
 # Phase 0: Foundation & Data Contracts
 # Python 3.11+
 
@@ -19,13 +19,18 @@ aiosqlite==0.20.0
 # CORS middleware (included with FastAPI)
 # No additional install needed
 
-# Development & testing
-pytest==8.3.3
-pytest-asyncio==0.24.0
+# HTTP client (Phase 3 Tool Sandbox — http_request / firecrawl_scrape tools)
 httpx==0.27.2
 
 # YAML parsing (Phase 1 Mission Designer)
 PyYAML==6.0.2
+
+# JSON Schema validation (Phase 5 Eval Suite — schema eval type)
+jsonschema==4.26.0
+
+# Development & testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
 
 # Code quality
 ruff==0.6.8

@@ -5,18 +5,14 @@ Handles YAML <-> JSON conversion for mission workflow definitions.
 Supports parsing, validation, and export of the MERIDIAN YAML format.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
-import yaml
+import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
 from app.core.logging import get_logger
 from app.models.schemas import (
     ValidationError,
     ValidationResult,
-    YamlAgentDef,
-    YamlMissionDef,
-    YamlStepDef,
     YamlWorkflow,
 )
 
@@ -437,7 +433,7 @@ def mission_to_yaml_dict(
     Returns:
         Dictionary ready for YAML serialization.
     """
-    result = {
+    result: Dict[str, Any] = {
         "version": "1.0",
         "mission": {
             "name": mission_name,

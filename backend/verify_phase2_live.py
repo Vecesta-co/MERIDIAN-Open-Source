@@ -222,6 +222,7 @@ async def main():
     # Manually mark as running + old started_at
     async with async_session_factory() as db:
         db_run = await db.get(Run, uuid.UUID(run4_id))
+        assert db_run is not None
         db_run.status = "running"
         db_run.started_at = datetime.now(timezone.utc) - timedelta(minutes=60)
         await db.commit()

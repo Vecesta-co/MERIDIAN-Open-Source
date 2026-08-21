@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MERIDIAN — Mission Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --meridian-indigo: #3730a3;
+            --meridian-indigo-light: #6554c0;
+            --meridian-teal: #0d9488;
+            --meridian-gray: #71717a;
+            --meridian-bg: #0f0f23;
+            --meridian-card: #1a1a3e;
+            --meridian-border: #2a2a4a;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--meridian-bg);
+            color: #eaeaea;
+            min-height: 100vh;
+            margin: 0;
+        }
+        
+        .nav-link {
+            position: relative;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--meridian-indigo);
+            transition: width 0.3s;
+        }
+        
+        .nav-link:hover::after {
+            width: 100%;
+        }
+        
+        .card {
+            background: var(--meridian-card);
+            border: 1px solid var(--meridian-border);
+            border-radius: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--meridian-indigo);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: 1px solid var(--meridian-border);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--meridian-indigo);
+            color: var(--meridian-indigo);
+        }
+        
+        .step-llm { border-left: 3px solid #3b82f6; }
+        .step-tool { border-left: 3px solid #10b981; }
+        .step-approval { border-left: 3px solid #f59e0b; }
+        
+        .status-running { color: #f59e0b; }
+        .status-pending { color: #6b7280; }
+        .status-completed { color: #10b981; }
+        .status-failed { color: #ef4444; }
+        
+        .eval-pass { color: #10b981; }
+        .eval-fail { color: #ef4444; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    
+    <!-- Header -->
+    <header class="mb-6">
+        <div class="max-w-7xl mx-auto">
+            <nav class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-md bg-gradient-to-br from-meridian-indigo to-meridian-indigo-light flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2rise 0 012-2h4a2 2 0 012 2v14a4 4 0 01-4 4zM7 5h5l2 6H5v14a2 2 0 002 2h2a2 2 0 002-2v-1h-2V5z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">MERIDIAN</h1>
+                        <p class="text-sm text-gray-400">AI Agent Operations Platform</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <a href="/docs" class="text-sm text-indigo-400 hover:text-white transition-colors">
+                        API Docs
+                    </a>
+                    <a href="/redoc" class="text-sm text-gray-400 hover:text-white transition-colors">
+                        ReDoc
+                    </a>
+                </div>
+            </nav>
+        </div>
+    </header>
+    
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto">
+        
+        <!-- Missions section -->
+        <section class="mb-6">
+            <h2 class="text-lg font-semibold mb-4">Missions</h2>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <!-- Mission cards will be loaded by JavaScript -->
+                <div class="empty-state card p-6 text-center">
+                    <p class="text-gray-400">Load missions from API</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Runs section -->
+        <section class="mb-6">
+            <h2 class="text-lg font-semibold mb-4">Active Runs</h2>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <!-- Runs will be loaded by JavaScript -->
+                <div class="empty-state card p-6 text-center">
+                    <p class="text-gray-400">No active runs</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Evals section -->
+        <section>
+            <h2 class="text-lg font-semibold mb-4">Eval Results</h2>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <!-- Evals will be loaded by JavaScript -->
+                <div class="empty-state card p-6 text-center">
+                    <p class="text-gray-400">No eval results</p>
+                </div>
+            </div>
+        </section>
+        
+    </main>
+    
+    <script>
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            const API_BASE = window.API_BASE || 'http://localhost:8000';
+            
+            // Load missions
+            await loadMissions();
+            // Load runs
+            await loadRuns();
+            // Load evals
+            await loadEvals();
+            
+            // Refresh every 30 seconds
+            setInterval(() => {
+                loadMissions();
+                loadRuns();
+                loadEvals();
+            }, 30000);
+        });
+        
+        async function apiFetch(endpoint, options = {}) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: {
+                    'X-API-Key': localStorage.getItem('meridian_api_key') || 'dev-api-key-localhost-bypass',
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                },
+                ...options,
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            return response.json();
+        }
+        
+        async function loadMissions() {
+            try {
+                const data = await apiFetch('/api/v1/missions');
+                const container = document.querySelector('.grid.grid-cols-1.gap-4.md\\:grid-cols-2.lg\\:grid-cols-3');
+                
+                if (data.length === 0) {
+                    container.innerHTML = `<div class="empty-state card p-6 text-center"><p class="text-gray-400">No missions found</p></div>`;
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(mission => {
+                    html += `
+                        <div class="card p-4">
+                            <h3 class="font-medium">${mission.name}</h3>
+                            <p class="text-sm text-gray-400">${mission.description || ''}</p>
+                            <p class="text-xs text-gray-500">${mission.goal || ''}</p>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch (err) {
+                console.error('Failed to load missions:', err);
+                document.querySelector('.grid.grid-cols-1.gap-4.md\\:grid-cols-2.lg\\:grid-cols-3').innerHTML = 
+                    `<div class="empty-state card p-6 text-center"><p class="text-red-400">Failed to load missions</p></div>`;
+            }
+        }
+        
+        async function loadRuns() {
+            try {
+                const data = await apiFetch('/api/v1/runs');
+                const container = document.querySelector('.grid.grid-cols-1.gap-4.md\\:grid-cols-2.lg\\:grid-cols-3');
+                
+                if (data.length === 0) {
+                    container.innerHTML = `<div class="empty-state card p-6 text-center"><p class="text-gray-400">No runs found</p></div>`;
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(run => {
+                    const statusClass = `status-${run.status}`;
+                    html += `
+                        <div class="card p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-medium">${run.name || 'Unnamed run'}</h3>
+                                    <p class="text-xs ${statusClass} margin-t-1">${run.status}</p>
+                                </div>
+                                <span class="text-xs text-gray-400">${new Date(run.created_at).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch (err) {
+                console.error('Failed to load runs:', err);
+            }
+        }
+        
+        async function loadEvals() {
+            try {
+                const data = await apiFetch('/api/v1/evals');
+                const container = document.querySelector('.grid.grid-cols-1.gap-4.md\\:grid-cols-2.lg\\:grid-cols-3');
+                
+                if (data.length === 0) {
+                    container.innerHTML = `<div class="empty-state card p-6 text-center"><p class="text-gray-400">No eval definitions</p></div>`;
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(evalDef => {
+                    html += `
+                        <div class="card p-4">
+                            <h3 class="font-medium">${evalDef.name}</h3>
+                            <p class="text-xs text-gray-400">${evalDef.scope} eval</p>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch (err) {
+                console.error('Failed to load evals:', err);
+            }
+        }
+    </script>
+</body>
+</html>

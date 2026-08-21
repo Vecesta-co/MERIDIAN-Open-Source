@@ -19,7 +19,6 @@ Requires Redis running (REDIS_URL env var).
 """
 
 import asyncio
-import os
 import uuid
 from datetime import datetime, timezone
 
@@ -104,21 +103,73 @@ def execute_run_job(run_id_str: str) -> dict:
         }
     except Exception as exc:
         logger.exception("Worker failed to execute run %s: %s", run_id, exc)
+        error_msg = f"Worker error: {str(exc)}"
         # Mark the run as failed
         async def _fail():
             async with async_session_factory() as db:
                 from app.db.models import Run
+                from app.services.run_service import _finalize_run_span
                 run = await db.get(Run, run_id)
                 if run and run.status not in ("completed", "failed", "cancelled", "timed_out"):
                     run.status = "failed"
                     run.ended_at = datetime.now(timezone.utc)
-                    run.error_summary = f"Worker error: {str(exc)}"
+                    run.error_summary = error_msg
+                    await _finalize_run_span(db, run, "error", error_msg)
                     await db.commit()
         asyncio.run(_fail())
         return {
             "run_id": str(run_id),
             "status": "failed",
-            "error_summary": f"Worker error: {str(exc)}",
+            "error_summary": error_msg,
+        }
+
+
+def enqueue_eval_job(run_id: uuid.UUID) -> str:
+    """
+    Enqueue an eval job for a completed run (Phase 5 Eval Suite).
+
+    Returns the RQ job ID.
+    """
+    job = _get_queue().enqueue(
+        "app.services.worker.execute_eval_job",
+        str(run_id),
+        job_timeout=settings.EVAL_LLM_TIMEOUT_SECONDS + 300,
+    )
+    logger.info("Enqueued eval job for run %s as job %s", run_id, job.id)
+    return job.id
+
+
+def execute_eval_job(run_id_str: str) -> dict:
+    """
+    RQ job entrypoint for the Eval Suite.
+
+    Evaluates a terminal run against all attached eval definitions.
+    Evals never re-run the mission and never block execution.
+    """
+    run_id = uuid.UUID(run_id_str)
+    logger.info("Worker running evals for run %s", run_id)
+
+    async def _run():
+        async with async_session_factory() as db:
+            from app.services.eval_service import run_evals_for_run
+
+            return await run_evals_for_run(db, run_id)
+
+    try:
+        response = asyncio.run(_run())
+        return {
+            "run_id": str(response.run_id),
+            "evaluated": response.evaluated,
+            "skipped": response.skipped,
+            "reason": response.reason,
+            "status": "completed",
+        }
+    except Exception as exc:
+        logger.exception("Eval job failed for run %s: %s", run_id, exc)
+        return {
+            "run_id": str(run_id),
+            "status": "failed",
+            "error": str(exc),
         }
 
 

@@ -77,38 +77,12 @@ async def get_steps_for_mission_version(session: AsyncSession, version_id: uuid.
 
 def mission_to_response(mission: Mission) -> MissionResponse:
     """Convert a Mission ORM object to a MissionResponse schema."""
-    return MissionResponse(
-        id=mission.id,
-        name=mission.name,
-        description=mission.description,
-        goal=mission.goal,
-        state=mission.state,
-        version=mission.version,
-        created_at=mission.created_at,
-        updated_at=mission.updated_at,
-    )
+    return MissionResponse.model_validate(mission)
 
 
 def step_to_response(step: Step) -> StepWithDetailsResponse:
     """Convert a Step ORM object to a StepWithDetailsResponse schema."""
-    return StepWithDetailsResponse(
-        id=step.id,
-        mission_version_id=step.mission_version_id,
-        step_key=step.step_key,
-        name=step.name,
-        kind=step.kind,
-        step_type=getattr(step, "step_type", None) or step.kind,
-        order_index=step.order_index,
-        depends_on=step.depends_on,
-        config=step.config,
-        agent_key=getattr(step, "agent_key", None),
-        prompt_template=getattr(step, "prompt_template", None),
-        tool_refs=getattr(step, "tool_refs", []),
-        approval_required=getattr(step, "approval_required", False),
-        max_retries=getattr(step, "max_retries", 3),
-        timeout_seconds=getattr(step, "timeout_seconds", 300),
-        created_at=step.created_at,
-    )
+    return StepWithDetailsResponse.model_validate(step)
 
 
 def step_to_yaml_dict(step: Step) -> Dict[str, Any]:
@@ -219,6 +193,7 @@ async def create_mission_from_json(
         goal=mission_data.get("goal"),
         state=mission_data.get("state", "draft"),
         version=1,
+        tags=mission_data.get("tags", []),
     )
     session.add(mission)
     await session.flush()  # Get mission.id
@@ -366,6 +341,8 @@ async def update_mission(
         mission.description = update_data["description"]
     if "goal" in update_data:
         mission.goal = update_data["goal"]
+    if "tags" in update_data:
+        mission.tags = update_data["tags"]
 
     # Full-replacement validation: when steps are provided, the update payload
     # must be valid on its own (same contract as POST /missions and /validate).
@@ -491,6 +468,7 @@ async def clone_mission(session: AsyncSession, mission_id: uuid.UUID) -> Mission
         goal=original.goal,
         state="draft",
         version=1,
+        tags=original.tags,
     )
     session.add(new_mission)
     await session.flush()

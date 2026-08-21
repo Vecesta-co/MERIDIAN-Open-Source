@@ -13,6 +13,8 @@ Now, here is the full product design:
 # **MERIDIAN**
 **Tagline:** *"Design, run, watch, and trust your AI agents — without writing a framework."*
 
+**Contributed by Vecesta.co**
+
 ---
 
 ## B. PRODUCT THESIS
